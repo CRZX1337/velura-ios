@@ -1,4 +1,4 @@
-name: Build signed iOS IPA
+name: Build unsigned IPA and publish prerelease
 
 on:
   workflow_dispatch:
@@ -13,102 +13,41 @@ jobs:
   build-ipa:
     runs-on: macos-26
     timeout-minutes: 45
-    env:
-      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-      IOS_BUNDLE_IDENTIFIER: ${{ vars.IOS_BUNDLE_IDENTIFIER }}
-      IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
-      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Install signing assets
+      - name: Build and package unsigned IPA
         shell: bash
         run: |
           set -euo pipefail
-          : "${APPLE_TEAM_ID:?Set the APPLE_TEAM_ID repository variable}"
-          : "${IOS_BUNDLE_IDENTIFIER:?Set the IOS_BUNDLE_IDENTIFIER repository variable}"
-          : "${IOS_CERTIFICATE_BASE64:?Set the IOS_CERTIFICATE_BASE64 repository secret}"
-          : "${IOS_CERTIFICATE_PASSWORD:?Set the IOS_CERTIFICATE_PASSWORD repository secret}"
-          : "${IOS_PROVISIONING_PROFILE_BASE64:?Set the IOS_PROVISIONING_PROFILE_BASE64 repository secret}"
+          DERIVED_DATA="$RUNNER_TEMP/DerivedData"
+          IPA_ROOT="$RUNNER_TEMP/ipa-root"
+          IPA_EXPORT="$RUNNER_TEMP/ipa-export"
 
-          CERTIFICATE_PATH="$RUNNER_TEMP/ios_distribution.p12"
-          PROFILE_PATH="$RUNNER_TEMP/ios_profile.mobileprovision"
-          PROFILE_PLIST_PATH="$RUNNER_TEMP/ios_profile.plist"
-          KEYCHAIN_PATH="$RUNNER_TEMP/velura-signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
-
-          printf '%s' "$IOS_CERTIFICATE_BASE64" | base64 -D > "$CERTIFICATE_PATH"
-          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 -D > "$PROFILE_PATH"
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-
-          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST_PATH"
-          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$PROFILE_PLIST_PATH")"
-          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print Name' "$PROFILE_PLIST_PATH")"
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
-
-          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-
-      - name: Archive for iOS devices
-        shell: bash
-        run: |
-          set -euo pipefail
           xcodebuild \
             -project Velura.xcodeproj \
             -scheme Velura \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/Velura.xcarchive" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_IDENTIFIER" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            archive
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
 
-      - name: Export ad hoc IPA
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os
-          import plistlib
-
-          options = {
-              "method": "ad-hoc",
-              "signingStyle": "manual",
-              "teamID": os.environ["APPLE_TEAM_ID"],
-              "provisioningProfiles": {
-                  os.environ["IOS_BUNDLE_IDENTIFIER"]: os.environ["PROFILE_NAME"]
-              },
-          }
-          path = os.path.join(os.environ["RUNNER_TEMP"], "ExportOptions.plist")
-          with open(path, "wb") as export_options:
-              plistlib.dump(options, export_options)
-          PY
-
-          xcodebuild \
-            -exportArchive \
-            -archivePath "$RUNNER_TEMP/Velura.xcarchive" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/ipa-export"
+          APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/Velura.app"
+          test -d "$APP_PATH"
+          mkdir -p "$IPA_ROOT/Payload" "$IPA_EXPORT"
+          cp -R "$APP_PATH" "$IPA_ROOT/Payload/Velura.app"
+          ditto -c -k --sequesterRsrc --keepParent "$IPA_ROOT/Payload" "$IPA_EXPORT/Velura-unsigned.ipa"
+          unzip -tq "$IPA_EXPORT/Velura-unsigned.ipa"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: velura-ios-ipa-${{ github.run_number }}
-          path: ${{ runner.temp }}/ipa-export/*.ipa
+          name: velura-ios-unsigned-ipa-${{ github.run_number }}
+          path: ${{ runner.temp }}/ipa-export/Velura-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
 
@@ -118,19 +57,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          IPA_PATH="$(find "$RUNNER_TEMP/ipa-export" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
-          test -n "$IPA_PATH"
+          IPA_PATH="$RUNNER_TEMP/ipa-export/Velura-unsigned.ipa"
           TAG_NAME="velura-pre-${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
           gh release create "$TAG_NAME" "$IPA_PATH" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Velura pre-release ${GITHUB_RUN_NUMBER}" \
-            --notes "Automatically built from commit ${GITHUB_SHA} on ${GITHUB_REF_NAME}. Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --notes "Unsigned IPA built from commit ${GITHUB_SHA} on ${GITHUB_REF_NAME}. This IPA must be signed before installation. Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --prerelease
-
-      - name: Remove signing assets
-        if: always()
-        shell: bash
-        run: |
-          security delete-keychain "$RUNNER_TEMP/velura-signing.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/ios_distribution.p12" "$RUNNER_TEMP/ios_profile.mobileprovision" "$RUNNER_TEMP/ios_profile.plist"
