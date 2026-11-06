@@ -3,11 +3,11 @@ name: Build signed iOS IPA
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches:
+      - "**"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-ipa:
@@ -111,6 +111,22 @@ jobs:
           path: ${{ runner.temp }}/ipa-export/*.ipa
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          IPA_PATH="$(find "$RUNNER_TEMP/ipa-export" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          test -n "$IPA_PATH"
+          TAG_NAME="velura-pre-${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
+          gh release create "$TAG_NAME" "$IPA_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Velura pre-release ${GITHUB_RUN_NUMBER}" \
+            --notes "Automatically built from commit ${GITHUB_SHA} on ${GITHUB_REF_NAME}. Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --prerelease
 
       - name: Remove signing assets
         if: always()
