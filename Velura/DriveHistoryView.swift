@@ -23,6 +23,14 @@ struct DriveHistoryView: View {
     @State private var searchText = ""
     @State private var selectedDrive: DriveRecord?
     @State private var showingClearConfirmation = false
+    @State private var isSearchPresented = false
+    @State private var showingInsights = false
+
+    private let onBack: () -> Void
+
+    init(onBack: @escaping () -> Void = {}) {
+        self.onBack = onBack
+    }
 
     private var monthDrives: [DriveRecord] {
         guard let interval = Calendar.current.dateInterval(of: .month, for: .now) else { return [] }
@@ -101,43 +109,48 @@ struct DriveHistoryView: View {
     }
 
     var body: some View {
-        ZStack {
-            SpeedometerStyle.background.ignoresSafeArea()
+        GeometryReader { geometry in
+            ZStack {
+                SpeedometerStyle.background.ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 19) {
-                    header
-                    monthSummary
-                    searchField
-                    filterControl
-
-                    if dayGroups.isEmpty {
-                        if !normalizedSearchQuery.isEmpty {
-                            noMatchesState
-                        } else if store.drives.isEmpty {
-                            emptyState
-                        } else {
-                            filterEmptyState
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        header
+                        monthSummary
+                        if isSearchPresented {
+                            searchField
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                         }
-                    } else {
-                        LazyVStack(alignment: .leading, spacing: 18) {
-                            ForEach(dayGroups) { group in
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text(group.title)
-                                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                                        .tracking(1.4)
-                                        .foregroundStyle(SpeedometerStyle.secondary)
-                                        .padding(.top, 3)
+                        filterControl
 
-                                    ForEach(group.drives) { drive in
-                                        DriveHistoryRow(drive: drive) {
-                                            selectedDrive = drive
-                                        }
-                                        .contextMenu {
-                                            Button(role: .destructive) {
-                                                withAnimation(.snappy) { store.delete(drive.id) }
-                                            } label: {
-                                                Label("Delete drive", systemImage: "trash")
+                        if dayGroups.isEmpty {
+                            if !normalizedSearchQuery.isEmpty {
+                                noMatchesState
+                            } else if store.drives.isEmpty {
+                                emptyState
+                            } else {
+                                filterEmptyState
+                            }
+                        } else {
+                            LazyVStack(alignment: .leading, spacing: 18) {
+                                ForEach(dayGroups) { group in
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Text(group.title)
+                                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                                            .tracking(1.4)
+                                            .foregroundStyle(SpeedometerStyle.secondary)
+                                            .padding(.top, 3)
+
+                                        ForEach(group.drives) { drive in
+                                            DriveHistoryRow(drive: drive) {
+                                                selectedDrive = drive
+                                            }
+                                            .contextMenu {
+                                                Button(role: .destructive) {
+                                                    withAnimation(.snappy) { store.delete(drive.id) }
+                                                } label: {
+                                                    Label("Delete drive", systemImage: "trash")
+                                                }
                                             }
                                         }
                                     }
@@ -145,16 +158,20 @@ struct DriveHistoryView: View {
                             }
                         }
                     }
+                    .padding(.horizontal, geometry.size.width < 380 ? 16 : 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: 520)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 12)
-                .padding(.bottom, 30)
-                .frame(maxWidth: 520)
-                .frame(maxWidth: .infinity)
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .preferredColorScheme(.dark)
+        .navigationDestination(isPresented: $showingInsights) {
+            DrivingInsightsView()
+        }
         .sheet(item: $selectedDrive) { drive in
             DriveDetailView(drive: drive, onDeleteRoute: {
                 store.deleteRoute(for: drive.id)
@@ -177,50 +194,64 @@ struct DriveHistoryView: View {
     }
 
     private var header: some View {
-        HStack {
-            Text("Drive history")
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
+        ZStack {
+            Text("Your drives")
+                .font(.system(size: 21, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
 
-            Spacer(minLength: 0)
-
-            NavigationLink {
-                DrivingInsightsView()
-            } label: {
-                Image(systemName: "chart.bar.xaxis")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(SpeedometerStyle.accent)
-                    .frame(width: 42, height: 42)
-                    .glassEffect(.regular.interactive(), in: .circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Driving insights")
-
-            Menu {
-                Picker("Show drives", selection: $filter) {
-                    ForEach(HistoryFilter.allCases) { option in
-                        Text(option.rawValue).tag(option)
-                    }
+            HStack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 42, height: 42)
+                        .glassEffect(.regular.interactive(), in: .circle)
                 }
-                if !store.drives.isEmpty {
-                    Divider()
-                    Button(role: .destructive) {
-                        showingClearConfirmation = true
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back to speedometer")
+
+                Spacer()
+
+                Menu {
+                    Button {
+                        withAnimation(.snappy(duration: 0.28)) {
+                            if isSearchPresented {
+                                isSearchPresented = false
+                                searchText = ""
+                            } else {
+                                isSearchPresented = true
+                            }
+                        }
                     } label: {
-                        Label("Clear all history", systemImage: "trash")
+                        Label(isSearchPresented ? "Close search" : "Search drives", systemImage: "magnifyingglass")
                     }
+
+                    Button {
+                        showingInsights = true
+                    } label: {
+                        Label("Driving insights", systemImage: "chart.bar.xaxis")
+                    }
+
+                    if !store.drives.isEmpty {
+                        Divider()
+                        Button(role: .destructive) {
+                            showingClearConfirmation = true
+                        } label: {
+                            Label("Clear all history", systemImage: "trash")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 42, height: 42)
+                        .glassEffect(.regular.interactive(), in: .circle)
                 }
-            } label: {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Search, insights or history actions")
             }
-            .accessibilityLabel("Filter or clear drive history")
         }
-        .frame(height: 46)
+        .frame(height: 48)
     }
 
     private var searchField: some View {
@@ -321,67 +352,77 @@ struct DriveHistoryView: View {
         let distance = monthDrives.reduce(0) { $0 + $1.distanceKm }
         let duration = monthDrives.reduce(0) { $0 + $1.duration }
 
-        return VStack(alignment: .leading, spacing: 17) {
+        return VStack(alignment: .leading, spacing: 16) {
             Text("THIS MONTH")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .tracking(1.25)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .tracking(1.35)
                 .foregroundStyle(SpeedometerStyle.secondary)
 
             HStack(spacing: 0) {
-                summaryMetric(value: "\(monthDrives.count)", caption: "drives")
+                summaryMetric(value: "\(monthDrives.count)", caption: "DRIVES")
                 summaryDivider
-                summaryMetric(value: String(format: "%.1f", distance), caption: "km")
+                summaryMetric(value: String(format: "%.1f", distance), caption: "KM")
                 summaryDivider
-                summaryMetric(value: compactDuration(duration), caption: "total time")
+                summaryMetric(value: compactDuration(duration), caption: "TOTAL TIME")
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 17)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.11), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("This month’s driving summary")
     }
 
     private var summaryDivider: some View {
         Rectangle()
-            .fill(.white.opacity(0.12))
-            .frame(width: 1, height: 37)
+            .fill(.white.opacity(0.15))
+            .frame(width: 1, height: 42)
     }
 
     private func summaryMetric(value: String, caption: String) -> some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 6) {
             Text(value)
-                .font(.system(size: 25, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.system(size: 23, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
                 .contentTransition(.numericText())
             Text(caption)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .tracking(0.65)
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.72)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
     }
 
     private var filterControl: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 3) {
             ForEach(HistoryFilter.allCases) { option in
                 let isSelected = filter == option
                 Button {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) { filter = option }
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.8)) { filter = option }
                 } label: {
                     Text(option.rawValue)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isSelected ? .white : SpeedometerStyle.secondary)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(isSelected ? AppAppearance.shared.theme.accentForeground : SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .frame(height: 36)
                         .background {
                             if isSelected {
                                 Capsule()
-                                    .fill(SpeedometerStyle.accent.opacity(0.17))
-                                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.22)), in: .capsule)
+                                    .fill(SpeedometerStyle.accent.opacity(0.9))
+                                    .overlay {
+                                        Capsule().stroke(.white.opacity(0.2), lineWidth: 1)
+                                    }
+                                    .shadow(color: SpeedometerStyle.accent.opacity(0.2), radius: 7, y: 2)
                             }
                         }
                 }
@@ -389,9 +430,14 @@ struct DriveHistoryView: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(5)
-        .background(.white.opacity(0.025), in: Capsule())
+        .padding(4)
+        .background(.white.opacity(0.045), in: Capsule())
         .glassEffect(.regular, in: .capsule)
+        .overlay {
+            Capsule().stroke(.white.opacity(0.09), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Drive history date filter")
     }
 
     private var emptyState: some View {
@@ -444,25 +490,30 @@ private struct DriveHistoryRow: View {
 
                 Spacer(minLength: 5)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Top")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("TOP SPEED")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .tracking(0.65)
                         .foregroundStyle(SpeedometerStyle.secondary)
                     Text("\(Int(drive.topSpeedKmh.rounded())) km/h")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.78)
                 }
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
-                    .padding(.leading, 2)
+                    .padding(.leading, 1)
             }
             .padding(11)
-            .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 22))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(.white.opacity(0.1), lineWidth: 1)
+            }
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
         .buttonStyle(.plain)

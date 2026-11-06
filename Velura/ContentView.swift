@@ -54,7 +54,9 @@ struct ContentView: View {
                 .tag(MainTab.acceleration)
 
             NavigationStack {
-                DriveHistoryView()
+                DriveHistoryView {
+                    selectedTab = .speedometer
+                }
             }
             .tabItem { Label("Drives", systemImage: "clock.arrow.circlepath") }
             .tag(MainTab.history)
