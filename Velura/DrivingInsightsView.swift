@@ -6,7 +6,7 @@ private enum InsightsPeriod: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var previousLabel: String { self == .week ? "last week" : "last month" }
-    var chartTitle: String { self == .week ? "DISTANCE BY DAY" : "DISTANCE BY WEEK" }
+    var currentLabel: String { self == .week ? "this week" : "this month" }
 }
 
 private struct InsightBucket: Identifiable {
@@ -21,7 +21,6 @@ private struct InsightBucket: Identifiable {
 }
 
 struct DrivingInsightsView: View {
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var store = DriveHistoryStore.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var selectedPeriod: InsightsPeriod = .week
@@ -32,7 +31,9 @@ struct DrivingInsightsView: View {
 
     private var currentInterval: DateInterval {
         let component: Calendar.Component = selectedPeriod == .week ? .weekOfYear : .month
-        return Calendar.current.dateInterval(of: component, for: .now)
+        var calendar = Calendar.current
+        if selectedPeriod == .week { calendar.firstWeekday = 2 }
+        return calendar.dateInterval(of: component, for: .now)
             ?? DateInterval(start: .now, end: Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now)
     }
 
@@ -74,30 +75,23 @@ struct DrivingInsightsView: View {
 
     private var comparisonSummary: String {
         guard previousDistanceKm > 0 else {
-            return currentDistanceKm > 0 ? "First distance \(selectedPeriod == .week ? "this week" : "this month")" : "No distance in either period"
+            return currentDistanceKm > 0 ? "First distance \(selectedPeriod.currentLabel)" : "No distance yet \(selectedPeriod.currentLabel)"
         }
 
         let change = (currentDistanceKm - previousDistanceKm) / previousDistanceKm * 100
-        let arrow = change >= 0 ? "↑" : "↓"
-        return "\(arrow) \(Int(abs(change).rounded()))% vs \(selectedPeriod.previousLabel)"
-    }
-
-    private var comparisonColor: Color {
-        if currentDistanceKm == 0 && previousDistanceKm == 0 { return SpeedometerStyle.secondary }
-        return currentDistanceKm > previousDistanceKm ? SpeedometerStyle.mint : SpeedometerStyle.secondary
+        let percentage = Int(abs(change).rounded())
+        if percentage == 0 { return "Same as \(selectedPeriod.previousLabel)" }
+        return "\(percentage)% \(change > 0 ? "more" : "less") than \(selectedPeriod.previousLabel)"
     }
 
     private var comparisonSymbol: String {
-        if currentDistanceKm == 0 && previousDistanceKm == 0 { return "minus" }
-        return currentDistanceKm >= previousDistanceKm ? "arrow.up.right" : "arrow.down.right"
+        guard previousDistanceKm > 0 || currentDistanceKm > 0 else { return "minus" }
+        if currentDistanceKm == previousDistanceKm { return "equal" }
+        return currentDistanceKm > previousDistanceKm ? "arrow.up" : "arrow.down"
     }
 
-    private var periodCaption: String {
-        if selectedPeriod == .month {
-            return currentInterval.start.formatted(.dateTime.month(.wide).year()).uppercased()
-        }
-        let finalDay = Calendar.current.date(byAdding: .second, value: -1, to: currentInterval.end) ?? currentInterval.end
-        return "\(currentInterval.start.formatted(.dateTime.month(.abbreviated).day())) – \(finalDay.formatted(.dateTime.month(.abbreviated).day()))"
+    private var comparisonColor: Color {
+        currentDistanceKm >= previousDistanceKm && currentDistanceKm > 0 ? SpeedometerStyle.mint : SpeedometerStyle.secondary
     }
 
     private var chartBuckets: [InsightBucket] {
@@ -116,7 +110,7 @@ struct DrivingInsightsView: View {
                 .filter { $0.date >= start && $0.date < end }
                 .reduce(0) { $0 + $1.distanceKm }
             let label = selectedPeriod == .week
-                ? start.formatted(.dateTime.weekday(.narrow))
+                ? start.formatted(.dateTime.weekday(.abbreviated))
                 : "\(calendar.component(.day, from: start))"
 
             return InsightBucket(
@@ -130,21 +124,42 @@ struct DrivingInsightsView: View {
         }
     }
 
+    private var chartAxisStep: Double {
+        let maximum = (chartBuckets.map { $0.distanceKm * conversion }.max() ?? 0) / 3
+        if maximum <= 5 { return 5 }
+        if maximum <= 10 { return 10 }
+        return ceil(maximum / 5) * 5
+    }
+
+    private var chartAxisMaximum: Double { chartAxisStep * 3 }
+
     var body: some View {
         ZStack {
-            SpeedometerStyle.background.ignoresSafeArea()
+            LinearGradient(
+                colors: [
+                    Color(red: 0.025, green: 0.070, blue: 0.105),
+                    SpeedometerStyle.background,
+                    Color(red: 0.008, green: 0.020, blue: 0.033)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 17) {
+                VStack(spacing: 0) {
                     header
-                    periodPicker
 
                     if store.drives.isEmpty {
                         emptyState
+                            .padding(.top, 42)
                     } else {
                         distanceSummary
+                            .padding(.top, 28)
                         distanceChart
+                            .padding(.top, 25)
                         metricsSummary
+                            .padding(.top, 24)
                     }
                 }
                 .padding(.horizontal, 22)
@@ -155,38 +170,29 @@ struct DrivingInsightsView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .preferredColorScheme(.dark)
         .animation(.snappy(duration: 0.3), value: selectedPeriod)
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .glassEffect(.regular.interactive(), in: .circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Back to drive history")
+        HStack(spacing: 8) {
+            Text("Driving insights")
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .layoutPriority(1)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Driving insights")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text("Your driving, at a glance")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-            }
-
-            Spacer(minLength: 0)
+            Spacer(minLength: 2)
+            periodPicker
+                .frame(width: 160, height: 44)
         }
-        .frame(height: 46)
+        .frame(height: 48)
     }
 
     private var periodPicker: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 3) {
             ForEach(InsightsPeriod.allCases) { period in
                 let isSelected = selectedPeriod == period
                 Button {
@@ -198,12 +204,22 @@ struct DrivingInsightsView: View {
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(isSelected ? .white : SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .frame(height: 36)
                         .background {
                             if isSelected {
                                 Capsule()
-                                    .fill(SpeedometerStyle.accent.opacity(0.17))
-                                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.22)), in: .capsule)
+                                    .fill(LinearGradient(
+                                        colors: [
+                                            Color(red: 0.19, green: 0.55, blue: 0.70).opacity(0.95),
+                                            Color(red: 0.12, green: 0.39, blue: 0.54).opacity(0.88)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ))
+                                    .overlay {
+                                        Capsule().stroke(.white.opacity(0.2), lineWidth: 1)
+                                    }
+                                    .shadow(color: SpeedometerStyle.accent.opacity(0.24), radius: 7, y: 2)
                             }
                         }
                 }
@@ -211,175 +227,163 @@ struct DrivingInsightsView: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(5)
-        .background(.white.opacity(0.025), in: Capsule())
+        .padding(4)
+        .background(.white.opacity(0.045), in: Capsule())
         .glassEffect(.regular, in: .capsule)
+        .overlay {
+            Capsule().stroke(.white.opacity(0.09), lineWidth: 1)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Insights period")
     }
 
     private var distanceSummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(selectedPeriod == .week ? "THIS WEEK" : "THIS MONTH")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.4)
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                Spacer()
-                Text(periodCaption)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            Text(selectedPeriod == .week ? "THIS WEEK" : "THIS MONTH")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .tracking(1.35)
+                .foregroundStyle(SpeedometerStyle.secondary)
 
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(String(format: "%.1f", currentDistanceKm * conversion))
-                    .font(.system(size: 43, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(distanceUnit)
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                Spacer(minLength: 0)
-                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                    .font(.system(size: 21, weight: .medium))
-                    .foregroundStyle(SpeedometerStyle.accent)
-                    .frame(width: 46, height: 46)
-                    .background(SpeedometerStyle.accent.opacity(0.1), in: Circle())
-            }
+            Text("\(String(format: "%.1f", currentDistanceKm * conversion)) \(distanceUnit)")
+                .font(.system(size: 43, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(.white)
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: comparisonSymbol)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                 Text(comparisonSummary)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Spacer(minLength: 2)
-                Text("\(String(format: "%.1f", previousDistanceKm * conversion)) \(distanceUnit) prior")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
             }
             .foregroundStyle(comparisonColor)
+            .accessibilityElement(children: .combine)
         }
-        .padding(16)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 23))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(selectedPeriod == .week ? "This week" : "This month"), \(String(format: "%.1f", currentDistanceKm * conversion)) \(distanceUnit), \(comparisonSummary), previous period \(String(format: "%.1f", previousDistanceKm * conversion)) \(distanceUnit)")
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var distanceChart: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack(spacing: 8) {
-                Image(systemName: "chart.bar.xaxis")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(SpeedometerStyle.accent)
-                Text(selectedPeriod.chartTitle)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.2)
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                Spacer()
-                Text("\(String(format: "%.1f", currentDistanceKm * conversion)) \(distanceUnit)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.86))
+        VStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                GeometryReader { geometry in
+                    ZStack(alignment: .bottom) {
+                        Canvas { context, size in
+                            for tick in 0...3 {
+                                let y = size.height - CGFloat(tick) * size.height / 3
+                                var line = Path()
+                                line.move(to: CGPoint(x: 0, y: y))
+                                line.addLine(to: CGPoint(x: size.width, y: y))
+                                let style = tick == 0
+                                    ? StrokeStyle(lineWidth: 1)
+                                    : StrokeStyle(lineWidth: 1, dash: [2, 5])
+                                context.stroke(line, with: .color(.white.opacity(tick == 0 ? 0.24 : 0.13)), style: style)
+                            }
+                        }
+
+                        HStack(alignment: .bottom, spacing: chartBuckets.count > 5 ? 12 : 18) {
+                            ForEach(chartBuckets) { bucket in
+                                let value = bucket.distanceKm * conversion
+                                let height = value > 0
+                                    ? max(4, geometry.size.height * CGFloat(value / chartAxisMaximum))
+                                    : 0
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(LinearGradient(
+                                        colors: bucket.isCurrent
+                                            ? [Color(red: 0.34, green: 0.91, blue: 0.98), Color(red: 0.05, green: 0.70, blue: 0.87)]
+                                            : [Color(red: 0.31, green: 0.83, blue: 0.94), Color(red: 0.08, green: 0.58, blue: 0.75)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ))
+                                    .frame(height: height)
+                                    .frame(maxWidth: .infinity)
+                                    .shadow(color: bucket.isCurrent ? SpeedometerStyle.accent.opacity(0.18) : .clear, radius: 8, y: 1)
+                            }
+                        }
+                        .padding(.horizontal, 13)
+                    }
+                }
+                .frame(height: 228)
+
+                GeometryReader { geometry in
+                    ZStack {
+                        ForEach(0...3, id: \.self) { tick in
+                            Text("\(Int(chartAxisStep * Double(3 - tick)))")
+                                .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                                .foregroundStyle(SpeedometerStyle.secondary)
+                                .position(x: geometry.size.width / 2, y: CGFloat(tick) * geometry.size.height / 3)
+                        }
+                    }
+                }
+                .frame(width: 22, height: 228)
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                let maximum = chartBuckets.map(\.distanceKm).max() ?? 0
+            HStack(spacing: chartBuckets.count > 5 ? 12 : 18) {
                 ForEach(chartBuckets) { bucket in
-                    VStack(spacing: 7) {
-                        GeometryReader { geometry in
-                            let height = maximum > 0
-                                ? max(4, geometry.size.height * CGFloat(bucket.distanceKm / maximum))
-                                : 3
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(bucket.isCurrent ? SpeedometerStyle.accent : SpeedometerStyle.accent.opacity(bucket.distanceKm > 0 ? 0.48 : 0.12))
-                                .frame(height: height)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                                .shadow(color: bucket.isCurrent ? SpeedometerStyle.accent.opacity(0.25) : .clear, radius: 7)
+                    Text(bucket.label)
+                        .font(.system(size: 11, weight: bucket.isCurrent ? .semibold : .medium, design: .rounded))
+                        .foregroundStyle(bucket.isCurrent ? .white : SpeedometerStyle.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
+                        .background {
+                            if bucket.isCurrent {
+                                Capsule()
+                                    .fill(.white.opacity(0.085))
+                                    .glassEffect(.regular, in: .capsule)
+                            }
                         }
-                        .frame(height: 92)
-
-                        Text(bucket.label)
-                            .font(.system(size: 10, weight: bucket.isCurrent ? .bold : .medium, design: .rounded))
-                            .foregroundStyle(bucket.isCurrent ? SpeedometerStyle.accent : SpeedometerStyle.secondary)
-                            .frame(height: 13)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(bucket.label), \(String(format: "%.1f", bucket.distanceKm * conversion)) \(distanceUnit)")
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(bucket.label), \(String(format: "%.1f", bucket.distanceKm * conversion)) \(distanceUnit)")
                 }
             }
-            .frame(height: 112)
-
-            if currentDrives.isEmpty {
-                Text("No drives recorded \(selectedPeriod == .week ? "this week" : "this month") yet. Your activity will appear here.")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-            }
+            .padding(.trailing, 30)
         }
-        .padding(15)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 23))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(selectedPeriod == .week ? "Distance by day" : "Distance by week")
     }
 
     private var metricsSummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("DRIVE SUMMARY")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.2)
-                .foregroundStyle(SpeedometerStyle.secondary)
-
-            HStack(spacing: 0) {
-                metric(value: "\(currentDrives.count)", unit: "", label: "DRIVES", symbol: "car.side.fill", tint: SpeedometerStyle.accent)
-                metricDivider
-                metric(value: currentDrives.isEmpty ? "—" : String(format: "%.1f", averageDistanceKm * conversion), unit: currentDrives.isEmpty ? "" : distanceUnit, label: "AVG DISTANCE", symbol: "arrow.left.and.right", tint: SpeedometerStyle.mint)
-                metricDivider
-                metric(value: topSpeedKmh.map { String(format: "%.0f", $0 * conversion) } ?? "—", unit: topSpeedKmh == nil ? "" : speedUnit, label: "TOP SPEED", symbol: "speedometer", tint: SpeedometerStyle.accent)
-            }
+        HStack(spacing: 0) {
+            metric(value: "\(currentDrives.count)", label: "DRIVES")
+            metricDivider
+            metric(value: currentDrives.isEmpty ? "—" : "\(String(format: "%.1f", averageDistanceKm * conversion)) \(distanceUnit)", label: "AVG. DISTANCE")
+            metricDivider
+            metric(value: topSpeedKmh.map { "\(String(format: "%.0f", $0 * conversion)) \(speedUnit)" } ?? "—", label: "TOP SPEED")
         }
-        .padding(15)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 23))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 20)
+        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.11), lineWidth: 1)
+        }
     }
 
     private var metricDivider: some View {
         Rectangle()
-            .fill(.white.opacity(0.12))
-            .frame(width: 1, height: 54)
+            .fill(.white.opacity(0.15))
+            .frame(width: 1, height: 46)
     }
 
-    private func metric(value: String, unit: String, label: String, symbol: String, tint: Color) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(tint)
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value)
-                    .font(.system(size: 19, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                if !unit.isEmpty {
-                    Text(unit)
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.secondary)
-                }
-            }
+    private func metric(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(value)
+                .font(.system(size: 21, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
             Text(label)
-                .font(.system(size: 8, weight: .bold, design: .rounded))
-                .tracking(0.55)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .tracking(0.6)
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 10)
         .accessibilityElement(children: .combine)
     }
 
