@@ -47,9 +47,11 @@ struct ContentView: View {
                 .tabItem { Label("Test", systemImage: "stopwatch") }
                 .tag(MainTab.acceleration)
 
-            DriveHistoryView()
-                .tabItem { Label("Drives", systemImage: "clock.arrow.circlepath") }
-                .tag(MainTab.history)
+            NavigationStack {
+                DriveHistoryView()
+            }
+            .tabItem { Label("Drives", systemImage: "clock.arrow.circlepath") }
+            .tag(MainTab.history)
 
             settingsScreen
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }

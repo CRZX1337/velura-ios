@@ -184,6 +184,18 @@ struct DriveHistoryView: View {
 
             Spacer(minLength: 0)
 
+            NavigationLink {
+                DrivingInsightsView()
+            } label: {
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(SpeedometerStyle.accent)
+                    .frame(width: 42, height: 42)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Driving insights")
+
             Menu {
                 Picker("Show drives", selection: $filter) {
                     ForEach(HistoryFilter.allCases) { option in
