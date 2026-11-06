@@ -9,6 +9,28 @@ enum AccelerationTestState: Equatable {
     case completed
 }
 
+struct AccelerationAttempt: Codable, Equatable, Identifiable {
+    let id: UUID
+    let targetKmh: Int
+    let duration: TimeInterval
+    let date: Date
+
+    init(id: UUID = UUID(), targetKmh: Int, duration: TimeInterval, date: Date) {
+        self.id = id
+        self.targetKmh = targetKmh
+        self.duration = duration
+        self.date = date
+    }
+}
+
+struct AccelerationAttemptGroup: Identifiable {
+    let targetKmh: Int
+    let attempts: [AccelerationAttempt]
+
+    var id: Int { targetKmh }
+    var bestTime: TimeInterval? { attempts.map(\.duration).min() }
+}
+
 @MainActor
 final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var speedKmh = 0.0
@@ -27,11 +49,13 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     @Published private(set) var accelerationState: AccelerationTestState = .ready
     @Published private(set) var accelerationResult: TimeInterval?
     @Published private(set) var bestAccelerationTime: TimeInterval?
+    @Published private(set) var accelerationAttempts: [AccelerationAttempt] = []
     @Published private(set) var isNewAccelerationBest = false
     @Published var showLocationAlert = false
 
     private let locationManager = CLLocationManager()
     private let defaults = UserDefaults.standard
+    private let accelerationAttemptsStorageKey = "speedometer.acceleration.attempts"
     private var previousLocation: CLLocation?
     private var lastValidLocation: CLLocation?
     private var routeCoordinates: [DriveRoutePoint] = []
@@ -161,6 +185,38 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             return max(0, date.timeIntervalSince(accelerationRunStartedAt))
         }
         return accelerationResult ?? 0
+    }
+
+    var accelerationAttemptGroups: [AccelerationAttemptGroup] {
+        let groupedAttempts = Dictionary(grouping: accelerationAttempts, by: \.targetKmh)
+        return groupedAttempts.map { entry in
+            AccelerationAttemptGroup(
+                targetKmh: entry.key,
+                attempts: entry.value.sorted { $0.date > $1.date }
+            )
+        }
+        .sorted { $0.targetKmh < $1.targetKmh }
+    }
+
+    func deleteAccelerationAttempt(_ id: UUID) {
+        guard let attempt = accelerationAttempts.first(where: { $0.id == id }) else { return }
+        accelerationAttempts.removeAll { $0.id == id }
+        persistAccelerationAttempts()
+
+        let targetKey = "speedometer.acceleration.best.\(attempt.targetKmh)"
+        let remainingBest = accelerationAttempts
+            .filter { $0.targetKmh == attempt.targetKmh }
+            .map(\.duration)
+            .min()
+        if let remainingBest {
+            defaults.set(remainingBest, forKey: targetKey)
+        } else {
+            defaults.removeObject(forKey: targetKey)
+        }
+
+        if Int(accelerationTargetKmh.rounded()) == attempt.targetKmh {
+            bestAccelerationTime = remainingBest
+        }
     }
 
     func pauseSession() {
@@ -324,6 +380,11 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func restoreAccelerationSettings() {
+        if let data = defaults.data(forKey: accelerationAttemptsStorageKey),
+           let storedAttempts = try? JSONDecoder().decode([AccelerationAttempt].self, from: data) {
+            accelerationAttempts = storedAttempts.sorted { $0.date > $1.date }
+        }
+
         let presetKey = "speedometer.acceleration.preset"
         let customTargetKey = "speedometer.acceleration.customTarget"
         let savedPreset = defaults.object(forKey: presetKey) as? Int ?? 50
@@ -336,8 +397,18 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func loadBestAccelerationTime() {
-        let key = "speedometer.acceleration.best.\(Int(accelerationTargetKmh.rounded()))"
-        bestAccelerationTime = defaults.object(forKey: key) as? Double
+        let targetKmh = Int(accelerationTargetKmh.rounded())
+        let recordedBest = accelerationAttempts
+            .filter { $0.targetKmh == targetKmh }
+            .map(\.duration)
+            .min()
+        let key = "speedometer.acceleration.best.\(targetKmh)"
+        bestAccelerationTime = recordedBest ?? defaults.object(forKey: key) as? Double
+    }
+
+    private func persistAccelerationAttempts() {
+        guard let data = try? JSONEncoder().encode(accelerationAttempts) else { return }
+        defaults.set(data, forKey: accelerationAttemptsStorageKey)
     }
 
     private func updateAccelerationTest(speedKmh: Double, at timestamp: Date) {
@@ -353,13 +424,19 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         case .timing:
             guard speedKmh >= accelerationTargetKmh else { return }
             let result = max(0, timestamp.timeIntervalSince(accelerationRunStartedAt ?? timestamp))
+            let targetKmh = Int(accelerationTargetKmh.rounded())
+            let previousBest = bestAccelerationTime
             accelerationResult = result
             accelerationState = .completed
-            if bestAccelerationTime == nil || result < bestAccelerationTime! {
+            accelerationAttempts.insert(AccelerationAttempt(targetKmh: targetKmh, duration: result, date: timestamp), at: 0)
+            persistAccelerationAttempts()
+
+            if previousBest == nil || result < previousBest! {
                 bestAccelerationTime = result
                 isNewAccelerationBest = true
-                let key = "speedometer.acceleration.best.\(Int(accelerationTargetKmh.rounded()))"
-                defaults.set(result, forKey: key)
+            }
+            if let bestAccelerationTime {
+                defaults.set(bestAccelerationTime, forKey: "speedometer.acceleration.best.\(targetKmh)")
             }
         case .ready, .completed:
             break

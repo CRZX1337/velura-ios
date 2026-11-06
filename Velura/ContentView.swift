@@ -148,6 +148,7 @@ struct ContentView: View {
                     pageHeader(title: "Acceleration", subtitle: "Time your launch")
                     if showsGPSStatus { gpsStatus }
                     accelerationTest
+                    accelerationAttemptHistory
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 14)
@@ -445,6 +446,100 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
+        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+    }
+
+    private var accelerationAttemptHistory: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(SpeedometerStyle.accent)
+                Text("RECENT ATTEMPTS")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                Spacer()
+                Text("\(model.accelerationAttempts.count)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(SpeedometerStyle.secondary)
+            }
+
+            if model.accelerationAttemptGroups.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "stopwatch")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(SpeedometerStyle.accent.opacity(0.8))
+                    Text("No completed runs yet")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Your attempts and best times will be saved here by target.")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 17)
+            } else {
+                ForEach(model.accelerationAttemptGroups) { group in
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack(alignment: .center) {
+                            Text("0–\(group.targetKmh) km/h")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(.white)
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("BEST")
+                                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                                    .tracking(0.8)
+                                    .foregroundStyle(SpeedometerStyle.secondary)
+                                Text(group.bestTime.map { accelerationTimeText($0) } ?? "—")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                                    .foregroundStyle(SpeedometerStyle.mint)
+                            }
+                        }
+
+                        ForEach(group.attempts) { attempt in
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(attempt.date.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.84))
+                                    Text("\(accelerationTimeText(attempt.duration)) · 0–\(attempt.targetKmh) km/h")
+                                        .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                                        .foregroundStyle(SpeedometerStyle.secondary)
+                                }
+
+                                Spacer(minLength: 4)
+
+                                Button(role: .destructive) {
+                                    model.deleteAccelerationAttempt(attempt.id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(SpeedometerStyle.warning)
+                                        .frame(width: 34, height: 34)
+                                        .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.12)).interactive(), in: .circle)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Delete \(attempt.targetKmh) km/h attempt")
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+
+                    if group.id != model.accelerationAttemptGroups.last?.id {
+                        Rectangle()
+                            .fill(.white.opacity(0.1))
+                            .frame(height: 1)
+                    }
+                }
+            }
+        }
+        .padding(15)
         .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
     }
