@@ -7,6 +7,7 @@ struct DriveRouteView: View {
     let onDeleteRoute: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var appearance = AppAppearance.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var routeCoordinates: [DriveRoutePoint]
     @State private var cameraPosition: MapCameraPosition = .automatic
@@ -271,11 +272,11 @@ struct DriveRouteView: View {
             for point in routePoints.dropFirst() {
                 routePath.addLine(to: point)
             }
-            UIColor(red: 0.27, green: 0.79, blue: 0.98, alpha: 1).setStroke()
+            UIColor(SpeedometerStyle.accent).setStroke()
             routePath.stroke()
 
-            drawRouteMarker(at: routePoints[0], color: UIColor(red: 0.34, green: 0.91, blue: 0.73, alpha: 1))
-            drawRouteMarker(at: routePoints[routePoints.count - 1], color: UIColor(red: 1, green: 0.55, blue: 0.30, alpha: 1))
+            drawRouteMarker(at: routePoints[0], color: UIColor(SpeedometerStyle.mint))
+            drawRouteMarker(at: routePoints[routePoints.count - 1], color: UIColor(SpeedometerStyle.warning))
         }
     }
 

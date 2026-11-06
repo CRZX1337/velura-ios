@@ -21,6 +21,7 @@ private struct InsightBucket: Identifiable {
 }
 
 struct DrivingInsightsView: View {
+    @ObservedObject private var appearance = AppAppearance.shared
     @StateObject private var store = DriveHistoryStore.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var selectedPeriod: InsightsPeriod = .week
@@ -135,16 +136,7 @@ struct DrivingInsightsView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.025, green: 0.070, blue: 0.105),
-                    SpeedometerStyle.background,
-                    Color(red: 0.008, green: 0.020, blue: 0.033)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            SpeedometerStyle.background.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -202,7 +194,7 @@ struct DrivingInsightsView: View {
                 } label: {
                     Text(period.rawValue)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isSelected ? .white : SpeedometerStyle.secondary)
+                        .foregroundStyle(isSelected ? AppAppearance.shared.theme.accentForeground : SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 36)
                         .background {
@@ -210,8 +202,8 @@ struct DrivingInsightsView: View {
                                 Capsule()
                                     .fill(LinearGradient(
                                         colors: [
-                                            Color(red: 0.19, green: 0.55, blue: 0.70).opacity(0.95),
-                                            Color(red: 0.12, green: 0.39, blue: 0.54).opacity(0.88)
+                                            SpeedometerStyle.accent.opacity(0.94),
+                                            SpeedometerStyle.accent.opacity(0.78)
                                         ],
                                         startPoint: .top,
                                         endPoint: .bottom
@@ -292,8 +284,8 @@ struct DrivingInsightsView: View {
                                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                                     .fill(LinearGradient(
                                         colors: bucket.isCurrent
-                                            ? [Color(red: 0.34, green: 0.91, blue: 0.98), Color(red: 0.05, green: 0.70, blue: 0.87)]
-                                            : [Color(red: 0.31, green: 0.83, blue: 0.94), Color(red: 0.08, green: 0.58, blue: 0.75)],
+                                            ? [SpeedometerStyle.accent, SpeedometerStyle.accent.opacity(0.78)]
+                                            : [SpeedometerStyle.accent.opacity(0.88), SpeedometerStyle.accent.opacity(0.58)],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     ))

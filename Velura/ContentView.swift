@@ -2,11 +2,11 @@ import SwiftUI
 import UIKit
 
 enum SpeedometerStyle {
-    static let background = Color(red: 0.025, green: 0.043, blue: 0.067)
-    static let secondary = Color(red: 0.56, green: 0.64, blue: 0.72)
-    static let accent = Color(red: 0.27, green: 0.79, blue: 0.98)
-    static let mint = Color(red: 0.34, green: 0.91, blue: 0.73)
-    static let warning = Color(red: 1.0, green: 0.34, blue: 0.31)
+    static var background: Color { AppAppearance.shared.theme.background }
+    static var secondary: Color { AppAppearance.shared.theme.secondary }
+    static var accent: Color { AppAppearance.shared.theme.accent }
+    static var mint: Color { AppAppearance.shared.theme.mint }
+    static var warning: Color { AppAppearance.shared.theme.warning }
 }
 
 private enum MainTab: Hashable {
@@ -17,6 +17,7 @@ private enum MainTab: Hashable {
 }
 
 struct ContentView: View {
+    @ObservedObject private var appearance = AppAppearance.shared
     @StateObject private var model = SpeedometerModel()
     @AppStorage("speedometer.selectedRange") private var selectedRange = 50
     @AppStorage("speedometer.customRange") private var customRange = 160
@@ -32,6 +33,10 @@ struct ContentView: View {
     private var displayedSpeed: Double { usesMiles ? model.speedKmh * 0.621371 : model.speedKmh }
     private var rangeMaximum: Double { Double(selectedRange == -1 ? customRange : selectedRange) }
     private var displayedWarningThreshold: Double { usesMiles ? overspeedThresholdKmh * 0.621371 : overspeedThresholdKmh }
+    private var gaugePreviewProgress: Double {
+        guard rangeMaximum > 0 else { return 0 }
+        return min(max(displayedSpeed / rangeMaximum, 0), 1)
+    }
     private var warningThresholdRange: ClosedRange<Double> {
         let conversion = usesMiles ? 0.621371 : 1.0
         return (20.0 * conversion)...(240.0 * conversion)
@@ -126,6 +131,7 @@ struct ContentView: View {
     private var speedometerScreen: some View {
         SpeedDashboardView(
             model: model,
+            dialStyle: appearance.dialStyle,
             usesMiles: usesMiles,
             rangeMaximum: rangeMaximum,
             showsGPSStatus: showsGPSStatus,
@@ -172,6 +178,7 @@ struct ContentView: View {
                     speedWarningSetting
                     gpsStatusSetting
                     rangePicker
+                    appearanceSection
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 14)
@@ -179,6 +186,187 @@ struct ContentView: View {
                 .frame(maxWidth: 520)
                 .frame(maxWidth: .infinity)
             }
+        }
+    }
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            HStack(spacing: 10) {
+                Image(systemName: "paintpalette.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(SpeedometerStyle.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Appearance")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Choose a theme and dial style")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 9) {
+                Text("APP THEME")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(1.1)
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                HStack(spacing: 8) {
+                    ForEach(AppearanceTheme.allCases) { theme in
+                        themeOption(theme)
+                    }
+                }
+            }
+
+            Rectangle()
+                .fill(.white.opacity(0.1))
+                .frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 9) {
+                Text("SPEEDOMETER DIAL")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(1.1)
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                HStack(spacing: 8) {
+                    ForEach(SpeedometerDialStyle.allCases) { style in
+                        dialOption(style)
+                    }
+                }
+            }
+        }
+        .padding(15)
+        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+    }
+
+    private func themeOption(_ theme: AppearanceTheme) -> some View {
+        let isSelected = appearance.theme == theme
+        return Button {
+            withAnimation(.snappy(duration: 0.3)) { appearance.theme = theme }
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                themePreview(theme)
+                    .frame(height: 58)
+                HStack(spacing: 3) {
+                    Text(theme.title)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(theme.accent)
+                    }
+                }
+            }
+            .padding(7)
+            .frame(maxWidth: .infinity)
+            .background(isSelected ? theme.accent.opacity(0.1) : .white.opacity(0.02), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? theme.accent.opacity(0.72) : .white.opacity(0.08), lineWidth: isSelected ? 1.2 : 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(theme.title) app theme")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func themePreview(_ theme: AppearanceTheme) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(theme.background)
+            GaugeArc(progress: 1)
+                .stroke(.white.opacity(0.16), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 55, height: 52)
+                .offset(y: 7)
+            GaugeArc(progress: gaugePreviewProgress)
+                .stroke(theme.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 55, height: 52)
+                .offset(y: 7)
+            VStack(spacing: -2) {
+                Text(String(format: "%.0f", displayedSpeed))
+                    .font(.system(size: 14, weight: .medium, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white)
+                Text(unit)
+                    .font(.system(size: 6, weight: .medium, design: .rounded))
+                    .foregroundStyle(theme.secondary)
+            }
+            .offset(y: 3)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(alignment: .topLeading) {
+            Circle()
+                .fill(theme.mint)
+                .frame(width: 5, height: 5)
+                .shadow(color: theme.mint.opacity(0.6), radius: 3)
+                .padding(6)
+        }
+    }
+
+    private func dialOption(_ style: SpeedometerDialStyle) -> some View {
+        let isSelected = appearance.dialStyle == style
+        return Button {
+            withAnimation(.snappy(duration: 0.3)) { appearance.dialStyle = style }
+        } label: {
+            VStack(spacing: 5) {
+                dialPreview(style)
+                    .frame(height: 47)
+                HStack(spacing: 3) {
+                    Text(style.title)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.accent)
+                    }
+                }
+            }
+            .padding(7)
+            .frame(maxWidth: .infinity)
+            .background(isSelected ? SpeedometerStyle.accent.opacity(0.1) : .white.opacity(0.02), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? SpeedometerStyle.accent.opacity(0.72) : .white.opacity(0.08), lineWidth: isSelected ? 1.2 : 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(style.title) speedometer dial")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func dialPreview(_ style: SpeedometerDialStyle) -> some View {
+        ZStack {
+            GaugeArc(progress: 1)
+                .stroke(.white.opacity(0.14), style: StrokeStyle(lineWidth: style.trackWidth * 0.45, lineCap: .round))
+                .frame(width: 60, height: 45)
+                .offset(y: 5)
+            if style == .sport {
+                GaugeArc(progress: 1)
+                    .trim(from: 0.84, to: 1)
+                    .stroke(SpeedometerStyle.warning.opacity(0.72), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .frame(width: 60, height: 45)
+                    .offset(y: 5)
+            }
+            if style.showsTicks {
+                GaugeTicks(tickCount: style.tickCount, majorTickInterval: style.majorTickInterval)
+                    .stroke(SpeedometerStyle.secondary.opacity(0.72), style: StrokeStyle(lineWidth: 0.75, lineCap: .round))
+                    .frame(width: 60, height: 45)
+                    .offset(y: 5)
+            }
+            GaugeArc(progress: gaugePreviewProgress)
+                .stroke(SpeedometerStyle.accent, style: StrokeStyle(lineWidth: style.trackWidth * 0.45, lineCap: .round))
+                .frame(width: 60, height: 45)
+                .offset(y: 5)
+            Text(String(format: "%.0f", displayedSpeed))
+                .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
+                .foregroundStyle(.white)
+                .offset(y: 5)
         }
     }
 
@@ -684,8 +872,10 @@ struct ContentView: View {
 }
 
 struct SpeedometerGauge: View {
+    @ObservedObject private var appearance = AppAppearance.shared
     let speed: Double
     let maximum: Double
+    let dialStyle: SpeedometerDialStyle
     let unit: String
     let isOverspeed: Bool
 
@@ -703,18 +893,28 @@ struct SpeedometerGauge: View {
             let gaugeColor = isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.accent
 
             ZStack {
+                if dialStyle == .sport {
+                    GaugeArc(progress: 1)
+                        .trim(from: 0.84, to: 1)
+                        .stroke(SpeedometerStyle.warning.opacity(0.72), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .frame(width: diameter, height: diameter)
+                        .position(center)
+                }
+
                 GaugeArc(progress: 1)
-                    .stroke(.white.opacity(0.10), style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .stroke(.white.opacity(0.10), style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
                     .frame(width: diameter, height: diameter)
                     .position(center)
 
-                GaugeTicks()
-                    .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 1.25, lineCap: .round))
-                    .frame(width: diameter, height: diameter)
-                    .position(center)
+                if dialStyle.showsTicks {
+                    GaugeTicks(tickCount: dialStyle.tickCount, majorTickInterval: dialStyle.majorTickInterval)
+                        .stroke(.white.opacity(dialStyle == .sport ? 0.72 : 0.55), style: StrokeStyle(lineWidth: dialStyle == .sport ? 1.4 : 1.25, lineCap: .round))
+                        .frame(width: diameter, height: diameter)
+                        .position(center)
+                }
 
                 GaugeArc(progress: progress)
-                    .stroke(gaugeColor, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .stroke(gaugeColor, style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
                     .shadow(color: gaugeColor.opacity(0.42), radius: 10)
                     .frame(width: diameter, height: diameter)
                     .position(center)
@@ -723,16 +923,16 @@ struct SpeedometerGauge: View {
 
                 Circle()
                     .fill(gaugeColor)
-                    .frame(width: 10, height: 10)
+                    .frame(width: dialStyle == .sport ? 12 : 10, height: dialStyle == .sport ? 12 : 10)
                     .shadow(color: gaugeColor.opacity(0.75), radius: 8)
                     .position(x: center.x + cos(indicatorAngle) * radius, y: center.y + sin(indicatorAngle) * radius)
                     .animation(.spring(response: 0.65, dampingFraction: 0.82), value: progress)
 
-                ForEach(0...4, id: \.self) { index in
-                    let fraction = Double(index) / 4
+                ForEach(0..<dialStyle.labelCount, id: \.self) { index in
+                    let fraction = Double(index) / Double(dialStyle.labelCount - 1)
                     let angle = (150 + 240 * fraction) * .pi / 180
                     let labelRadius = radius * 0.77
-                    Text(index == 4 ? "\(Int(maximum))" : "\(Int(maximum * fraction))")
+                    Text(index == dialStyle.labelCount - 1 ? "\(Int(maximum))" : "\(Int(maximum * fraction))")
                         .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .position(x: center.x + cos(angle) * labelRadius, y: center.y + sin(angle) * labelRadius)
@@ -781,16 +981,20 @@ private struct GaugeArc: Shape {
 }
 
 private struct GaugeTicks: Shape {
+    let tickCount: Int
+    let majorTickInterval: Int
+
     func path(in rect: CGRect) -> Path {
         let center = CGPoint(x: rect.midX, y: rect.midY)
         let radius = min(rect.width, rect.height) * 0.43
+        let minorTickInterval = max(1, majorTickInterval / 2)
         var path = Path()
-        for index in 0...40 {
-            let angle = (150 + 240 * Double(index) / 40) * .pi / 180
+        for index in 0...tickCount {
+            let angle = (150 + 240 * Double(index) / Double(tickCount)) * .pi / 180
             let tickLength: CGFloat
-            if index.isMultiple(of: 10) {
-                tickLength = 15
-            } else if index.isMultiple(of: 5) {
+            if index.isMultiple(of: majorTickInterval) {
+                tickLength = tickCount > 40 ? 17 : 15
+            } else if index.isMultiple(of: minorTickInterval) {
                 tickLength = 10
             } else {
                 tickLength = 5.5

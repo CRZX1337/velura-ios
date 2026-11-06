@@ -17,6 +17,7 @@ private struct DriveDayGroup: Identifiable {
 }
 
 struct DriveHistoryView: View {
+    @ObservedObject private var appearance = AppAppearance.shared
     @StateObject private var store = DriveHistoryStore.shared
     @State private var filter: HistoryFilter = .all
     @State private var searchText = ""
@@ -415,6 +416,7 @@ struct DriveHistoryView: View {
 }
 
 private struct DriveHistoryRow: View {
+    @ObservedObject private var appearance = AppAppearance.shared
     let drive: DriveRecord
     let action: () -> Void
 
@@ -470,10 +472,12 @@ private struct DriveHistoryRow: View {
 }
 
 private struct DriveRouteGlyph: View {
+    @ObservedObject private var appearance = AppAppearance.shared
+
     var body: some View {
         Canvas { context, size in
             let bounds = CGRect(origin: .zero, size: size)
-            context.fill(Path(bounds), with: .color(Color(red: 0.035, green: 0.075, blue: 0.11)))
+            context.fill(Path(bounds), with: .color(SpeedometerStyle.background))
 
             var street = Path()
             street.move(to: CGPoint(x: size.width * 0.08, y: size.height * 0.24))
@@ -493,7 +497,7 @@ private struct DriveRouteGlyph: View {
 
             for point in [CGPoint(x: size.width * 0.16, y: size.height * 0.84), CGPoint(x: size.width * 0.86, y: size.height * 0.2)] {
                 let marker = CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)
-                context.fill(Path(ellipseIn: marker), with: .color(Color(red: 0.035, green: 0.075, blue: 0.11)))
+                context.fill(Path(ellipseIn: marker), with: .color(SpeedometerStyle.background))
                 context.stroke(Path(ellipseIn: marker), with: .color(SpeedometerStyle.accent), lineWidth: 1.8)
             }
         }
@@ -503,6 +507,7 @@ private struct DriveRouteGlyph: View {
 }
 
 private struct DriveDetailView: View {
+    @ObservedObject private var appearance = AppAppearance.shared
     let drive: DriveRecord
     let onDeleteRoute: () -> Void
     let onDelete: () -> Void

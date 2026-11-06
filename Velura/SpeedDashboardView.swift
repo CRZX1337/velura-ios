@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct SpeedDashboardView: View {
+    @ObservedObject private var appearance = AppAppearance.shared
     @ObservedObject var model: SpeedometerModel
 
+    let dialStyle: SpeedometerDialStyle
     let usesMiles: Bool
     let rangeMaximum: Double
     let showsGPSStatus: Bool
@@ -30,6 +32,7 @@ struct SpeedDashboardView: View {
                         SpeedometerGauge(
                             speed: displayedSpeed,
                             maximum: rangeMaximum,
+                            dialStyle: dialStyle,
                             unit: unit,
                             isOverspeed: model.isOverspeedWarningActive
                         )
