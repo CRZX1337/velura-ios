@@ -163,7 +163,7 @@ struct DrivingInsightsView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(appearance.theme.colorScheme)
         .animation(.snappy(duration: 0.3), value: selectedPeriod)
     }
 
@@ -171,7 +171,7 @@ struct DrivingInsightsView: View {
         HStack(spacing: 8) {
             Text("Driving insights")
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .layoutPriority(1)
@@ -209,7 +209,7 @@ struct DrivingInsightsView: View {
                                         endPoint: .bottom
                                     ))
                                     .overlay {
-                                        Capsule().stroke(.white.opacity(0.2), lineWidth: 1)
+                                        Capsule().stroke(SpeedometerStyle.foreground.opacity(0.2), lineWidth: 1)
                                     }
                                     .shadow(color: SpeedometerStyle.accent.opacity(0.24), radius: 7, y: 2)
                             }
@@ -220,10 +220,10 @@ struct DrivingInsightsView: View {
             }
         }
         .padding(4)
-        .background(.white.opacity(0.045), in: Capsule())
+        .background(SpeedometerStyle.foreground.opacity(0.045), in: Capsule())
         .glassEffect(.regular, in: .capsule)
         .overlay {
-            Capsule().stroke(.white.opacity(0.09), lineWidth: 1)
+            Capsule().stroke(SpeedometerStyle.foreground.opacity(0.09), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Insights period")
@@ -238,7 +238,7 @@ struct DrivingInsightsView: View {
 
             Text("\(String(format: "%.1f", currentDistanceKm * conversion)) \(distanceUnit)")
                 .font(.system(size: 43, weight: .bold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -271,7 +271,7 @@ struct DrivingInsightsView: View {
                                 let style = tick == 0
                                     ? StrokeStyle(lineWidth: 1)
                                     : StrokeStyle(lineWidth: 1, dash: [2, 5])
-                                context.stroke(line, with: .color(.white.opacity(tick == 0 ? 0.24 : 0.13)), style: style)
+                                context.stroke(line, with: .color(SpeedometerStyle.foreground.opacity(tick == 0 ? 0.24 : 0.13)), style: style)
                             }
                         }
 
@@ -316,13 +316,13 @@ struct DrivingInsightsView: View {
                 ForEach(chartBuckets) { bucket in
                     Text(bucket.label)
                         .font(.system(size: 11, weight: bucket.isCurrent ? .semibold : .medium, design: .rounded))
-                        .foregroundStyle(bucket.isCurrent ? .white : SpeedometerStyle.secondary)
+                        .foregroundStyle(bucket.isCurrent ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 30)
                         .background {
                             if bucket.isCurrent {
                                 Capsule()
-                                    .fill(.white.opacity(0.085))
+                                    .fill(SpeedometerStyle.foreground.opacity(0.085))
                                     .glassEffect(.regular, in: .capsule)
                             }
                         }
@@ -346,17 +346,17 @@ struct DrivingInsightsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 20)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.white.opacity(0.11), lineWidth: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
         }
     }
 
     private var metricDivider: some View {
         Rectangle()
-            .fill(.white.opacity(0.15))
+            .fill(SpeedometerStyle.foreground.opacity(0.15))
             .frame(width: 1, height: 46)
     }
 
@@ -364,7 +364,7 @@ struct DrivingInsightsView: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(value)
                 .font(.system(size: 21, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
             Text(label)
@@ -389,7 +389,7 @@ struct DrivingInsightsView: View {
 
             Text("Your insights start with a drive")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .multilineTextAlignment(.center)
 
             Text("Save a drive from the Speed tab to see your distance trends, average drive and top speed here. Your history stays on this device.")
@@ -401,7 +401,7 @@ struct DrivingInsightsView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .padding(.vertical, 36)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AccelerationTestView: View {
     @ObservedObject var model: SpeedometerModel
+    @ObservedObject private var appearance = AppAppearance.shared
     let onBack: () -> Void
 
     private var target: Int { Int(model.accelerationTargetKmh.rounded()) }
@@ -34,7 +35,7 @@ struct AccelerationTestView: View {
             }
         }
         .toolbar(.hidden, for: .tabBar)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(appearance.theme.colorScheme)
     }
 
     private var header: some View {
@@ -42,7 +43,7 @@ struct AccelerationTestView: View {
             VStack(spacing: 7) {
                 Text("Acceleration test")
                     .font(.system(size: 21, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                 Text("Measure your launch")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
@@ -52,7 +53,7 @@ struct AccelerationTestView: View {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SpeedometerStyle.foreground)
                         .frame(width: 44, height: 44)
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
@@ -85,10 +86,10 @@ struct AccelerationTestView: View {
         }
         .padding(5)
         .frame(height: 58)
-        .background(.white.opacity(0.035), in: Capsule())
+        .background(SpeedometerStyle.foreground.opacity(0.035), in: Capsule())
         .glassEffect(.regular, in: .capsule)
         .overlay {
-            Capsule().stroke(.white.opacity(0.11), lineWidth: 1)
+            Capsule().stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Acceleration target")
@@ -98,14 +99,14 @@ struct AccelerationTestView: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(isSelected ? .white : SpeedometerStyle.secondary)
+                .foregroundStyle(isSelected ? SpeedometerStyle.accentForeground : SpeedometerStyle.secondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 48)
                 .background {
                     if isSelected {
                         Capsule()
-                            .fill(SpeedometerStyle.accent.opacity(0.82))
-                            .overlay { Capsule().stroke(.white.opacity(0.24), lineWidth: 1) }
+                            .fill(SpeedometerStyle.accent)
+                            .overlay { Capsule().stroke(SpeedometerStyle.foreground.opacity(0.24), lineWidth: 1) }
                             .shadow(color: SpeedometerStyle.accent.opacity(0.3), radius: 10, y: 2)
                     }
                 }
@@ -145,11 +146,11 @@ struct AccelerationTestView: View {
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 12)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 19))
         .overlay {
             RoundedRectangle(cornerRadius: 19, style: .continuous)
-                .stroke(.white.opacity(0.09), lineWidth: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.09), lineWidth: 1)
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
@@ -166,13 +167,13 @@ struct AccelerationTestView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(String(format: "%.2f", model.accelerationElapsed(at: context.date)))
                         .font(.system(size: 75, weight: .light, design: .rounded).monospacedDigit())
-                        .foregroundStyle(model.accelerationState == .completed ? SpeedometerStyle.accent : .white)
+                        .foregroundStyle(model.accelerationState == .completed ? SpeedometerStyle.accent : SpeedometerStyle.foreground)
                         .contentTransition(.numericText())
                         .minimumScaleFactor(0.65)
                         .lineLimit(1)
                     Text("s")
                         .font(.system(size: 43, weight: .medium, design: .rounded))
-                        .foregroundStyle(model.accelerationState == .completed ? SpeedometerStyle.accent : .white)
+                        .foregroundStyle(model.accelerationState == .completed ? SpeedometerStyle.accent : SpeedometerStyle.foreground)
                 }
                 .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .combine)
@@ -190,11 +191,11 @@ struct AccelerationTestView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 27)
         .frame(maxWidth: .infinity, minHeight: 226)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
         .overlay {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(.white.opacity(0.12), lineWidth: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.12), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
     }
@@ -208,7 +209,7 @@ struct AccelerationTestView: View {
                     .foregroundStyle(SpeedometerStyle.secondary)
                 Text(model.bestAccelerationTime.map(accelerationTimeText) ?? "—")
                     .font(.system(size: 27, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(model.isNewAccelerationBest ? SpeedometerStyle.mint : .white)
+                    .foregroundStyle(model.isNewAccelerationBest ? SpeedometerStyle.mint : SpeedometerStyle.foreground)
                     .contentTransition(.numericText())
             }
             Spacer()
@@ -225,11 +226,11 @@ struct AccelerationTestView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, minHeight: 93, alignment: .leading)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.white.opacity(0.1), lineWidth: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.1), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
     }
@@ -243,12 +244,12 @@ struct AccelerationTestView: View {
             } label: {
                 Text(primaryActionTitle)
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.accentForeground)
                     .frame(maxWidth: .infinity)
                     .frame(height: 60)
-                    .background(SpeedometerStyle.accent.opacity(0.82), in: Capsule())
+                    .background(SpeedometerStyle.accent, in: Capsule())
                     .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.25)).interactive(), in: .capsule)
-                    .overlay { Capsule().stroke(.white.opacity(0.32), lineWidth: 1) }
+                    .overlay { Capsule().stroke(SpeedometerStyle.foreground.opacity(0.32), lineWidth: 1) }
                     .shadow(color: SpeedometerStyle.accent.opacity(0.34), radius: 15, y: 3)
             }
             .buttonStyle(.plain)
@@ -293,7 +294,7 @@ struct AccelerationTestView: View {
                     HStack {
                         Text("0–\(group.targetKmh) km/h")
                             .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(.white)
+                            .foregroundStyle(SpeedometerStyle.foreground)
                         Spacer()
                         Text(group.bestTime.map(accelerationTimeText) ?? "—")
                             .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
@@ -305,7 +306,7 @@ struct AccelerationTestView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(attempt.date.formatted(date: .abbreviated, time: .shortened))
                                     .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.white.opacity(0.84))
+                                    .foregroundStyle(SpeedometerStyle.foreground.opacity(0.84))
                                 Text(accelerationTimeText(attempt.duration))
                                     .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
                                     .foregroundStyle(SpeedometerStyle.secondary)
@@ -327,13 +328,13 @@ struct AccelerationTestView: View {
                 }
                 if group.id != model.accelerationAttemptGroups.last?.id {
                     Rectangle()
-                        .fill(.white.opacity(0.1))
+                        .fill(SpeedometerStyle.foreground.opacity(0.1))
                         .frame(height: 1)
                 }
             }
         }
         .padding(16)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
     }
 

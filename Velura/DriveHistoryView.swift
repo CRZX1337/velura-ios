@@ -168,7 +168,7 @@ struct DriveHistoryView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(appearance.theme.colorScheme)
         .navigationDestination(isPresented: $showingInsights) {
             DrivingInsightsView()
         }
@@ -197,14 +197,14 @@ struct DriveHistoryView: View {
         ZStack {
             Text("Your drives")
                 .font(.system(size: 21, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .lineLimit(1)
 
             HStack {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SpeedometerStyle.foreground)
                         .frame(width: 42, height: 42)
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
@@ -244,7 +244,7 @@ struct DriveHistoryView: View {
                 } label: {
                     Image(systemName: "line.3.horizontal.decrease")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SpeedometerStyle.foreground)
                         .frame(width: 42, height: 42)
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
@@ -262,7 +262,7 @@ struct DriveHistoryView: View {
 
             TextField("Search date, distance, duration or speed", text: $searchText)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
@@ -282,7 +282,7 @@ struct DriveHistoryView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
@@ -293,7 +293,7 @@ struct DriveHistoryView: View {
                 .foregroundStyle(SpeedometerStyle.accent)
             Text("No matching drives")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
             Text("Try another date, distance, duration or top speed.")
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
@@ -313,7 +313,7 @@ struct DriveHistoryView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 16)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 
@@ -324,7 +324,7 @@ struct DriveHistoryView: View {
                 .foregroundStyle(SpeedometerStyle.accent)
             Text(filter == .thisWeek ? "No drives this week" : "No drives this month")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
             Text("Change the time filter to see other saved drives.")
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
@@ -344,7 +344,7 @@ struct DriveHistoryView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 16)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 
@@ -368,11 +368,11 @@ struct DriveHistoryView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 17)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.white.opacity(0.11), lineWidth: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("This month’s driving summary")
@@ -380,7 +380,7 @@ struct DriveHistoryView: View {
 
     private var summaryDivider: some View {
         Rectangle()
-            .fill(.white.opacity(0.15))
+            .fill(SpeedometerStyle.foreground.opacity(0.15))
             .frame(width: 1, height: 34)
     }
 
@@ -388,7 +388,7 @@ struct DriveHistoryView: View {
         VStack(spacing: 5) {
             Text(value)
                 .font(.system(size: 23, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
                 .contentTransition(.numericText())
@@ -411,7 +411,7 @@ struct DriveHistoryView: View {
                 } label: {
                     Text(option.rawValue)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isSelected ? AppAppearance.shared.theme.accentForeground : SpeedometerStyle.secondary)
+                        .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 36)
                         .background {
@@ -431,10 +431,10 @@ struct DriveHistoryView: View {
             }
         }
         .padding(4)
-        .background(.white.opacity(0.04), in: Capsule())
+        .background(SpeedometerStyle.foreground.opacity(0.04), in: Capsule())
         .glassEffect(.regular, in: .capsule)
         .overlay {
-            Capsule().stroke(.white.opacity(0.09), lineWidth: 1)
+            Capsule().stroke(SpeedometerStyle.foreground.opacity(0.09), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Drive history date filter")
@@ -447,7 +447,7 @@ struct DriveHistoryView: View {
                 .foregroundStyle(SpeedometerStyle.accent)
             Text("No drives yet")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
             Text("Completed drives will appear here.")
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
@@ -455,7 +455,7 @@ struct DriveHistoryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 42)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
         .padding(.top, 3)
     }
@@ -474,13 +474,13 @@ private struct DriveHistoryRow: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(.white.opacity(0.08), lineWidth: 1)
+                            .stroke(SpeedometerStyle.foreground.opacity(0.08), lineWidth: 1)
                     }
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(drive.date.formatted(date: .omitted, time: .shortened))
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SpeedometerStyle.foreground)
                     Text("\(String(format: "%.1f", drive.distanceKm)) km · \(rowDuration(drive.duration))")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
@@ -496,7 +496,7 @@ private struct DriveHistoryRow: View {
                         .foregroundStyle(SpeedometerStyle.secondary)
                     Text("\(Int(drive.topSpeedKmh.rounded())) km/h")
                         .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SpeedometerStyle.foreground)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                 }
@@ -508,7 +508,7 @@ private struct DriveHistoryRow: View {
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 7)
-            .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 22))
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -536,7 +536,7 @@ private struct DriveRouteGlyph: View {
             street.move(to: CGPoint(x: size.width * 0.13, y: size.height * 0.93))
             street.addLine(to: CGPoint(x: size.width * 0.35, y: size.height * 0.63))
             street.addLine(to: CGPoint(x: size.width * 0.83, y: size.height * 0.72))
-            context.stroke(street, with: .color(.white.opacity(0.065)), style: StrokeStyle(lineWidth: 1, lineCap: .round))
+            context.stroke(street, with: .color(SpeedometerStyle.foreground.opacity(0.065)), style: StrokeStyle(lineWidth: 1, lineCap: .round))
 
             var route = Path()
             route.move(to: CGPoint(x: size.width * 0.16, y: size.height * 0.84))
@@ -555,7 +555,7 @@ private struct DriveRouteGlyph: View {
                 context.stroke(Path(ellipseIn: marker), with: .color(SpeedometerStyle.accent), lineWidth: 1.8)
             }
         }
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityHidden(true)
     }
 }
@@ -589,7 +589,7 @@ private struct DriveDetailView: View {
             HStack {
                 Text("Drive details")
                     .font(.system(size: 19, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
@@ -621,7 +621,7 @@ private struct DriveDetailView: View {
                 detailMetric(title: "TOP SPEED", value: "\(Int(drive.topSpeedKmh.rounded())) km/h")
             }
             .padding(.vertical, 17)
-            .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 22))
 
             Button {
@@ -662,13 +662,13 @@ private struct DriveDetailView: View {
                 onDeleteRoute()
                 routeCoordinates.removeAll()
             }
-            .preferredColorScheme(.dark)
+            .preferredColorScheme(appearance.theme.colorScheme)
         }
     }
 
     private var detailDivider: some View {
         Rectangle()
-            .fill(.white.opacity(0.12))
+            .fill(SpeedometerStyle.foreground.opacity(0.12))
             .frame(width: 1, height: 38)
     }
 
@@ -680,7 +680,7 @@ private struct DriveDetailView: View {
                 .foregroundStyle(SpeedometerStyle.secondary)
             Text(value)
                 .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }

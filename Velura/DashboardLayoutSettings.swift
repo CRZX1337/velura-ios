@@ -142,6 +142,7 @@ final class AppDashboardLayout: ObservableObject {
 
 struct DashboardLayoutSettingsSection: View {
     @ObservedObject var layout: AppDashboardLayout
+    @ObservedObject private var appearance = AppAppearance.shared
     @State private var showingEditor = false
 
     var body: some View {
@@ -153,7 +154,7 @@ struct DashboardLayoutSettingsSection: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Dashboard layout")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SpeedometerStyle.foreground)
                     Text("Choose modules and arrange their order")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
@@ -194,7 +195,7 @@ struct DashboardLayoutSettingsSection: View {
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(15)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
         .sheet(isPresented: $showingEditor) {
             NavigationStack {
@@ -222,14 +223,14 @@ struct DashboardLayoutSettingsSection: View {
                         .font(.system(size: 11, weight: .semibold))
                 }
             }
-            .foregroundStyle(isSelected ? .white : SpeedometerStyle.secondary)
+            .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
             .padding(.horizontal, 11)
             .frame(maxWidth: .infinity)
             .frame(height: 40)
-            .background(isSelected ? SpeedometerStyle.accent.opacity(0.16) : .white.opacity(0.025), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .background(isSelected ? SpeedometerStyle.accent.opacity(0.16) : SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(isSelected ? SpeedometerStyle.accent.opacity(0.55) : .white.opacity(0.07), lineWidth: 1)
+                    .stroke(isSelected ? SpeedometerStyle.accent.opacity(0.55) : SpeedometerStyle.foreground.opacity(0.07), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -239,6 +240,7 @@ struct DashboardLayoutSettingsSection: View {
 
 private struct DashboardLayoutEditor: View {
     @ObservedObject var layout: AppDashboardLayout
+    @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -246,7 +248,7 @@ private struct DashboardLayoutEditor: View {
             Section {
                 ForEach(layout.moduleOrder) { module in
                     moduleRow(module)
-                        .listRowBackground(Color.white.opacity(0.025))
+                        .listRowBackground(SpeedometerStyle.foreground.opacity(0.025))
                 }
                 .onMove(perform: layout.move)
             } header: {
@@ -307,7 +309,7 @@ private struct DashboardLayoutEditor: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(module.title)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                 Text(module.detail)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)

@@ -78,7 +78,7 @@ struct SpeedDashboardView: View {
             Text("VELURA")
                 .font(.system(size: 14, weight: .bold, design: .rounded))
                 .tracking(5)
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(SpeedometerStyle.foreground.opacity(0.88))
                 .accessibilityAddTraits(.isHeader)
 
             if model.hasUnfinishedSession {
@@ -109,12 +109,12 @@ struct SpeedDashboardView: View {
             Text(model.gpsStatusTitle)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .tracking(0.35)
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(SpeedometerStyle.foreground.opacity(0.92))
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
 
             Rectangle()
-                .fill(.white.opacity(0.16))
+                .fill(SpeedometerStyle.foreground.opacity(0.16))
                 .frame(width: 1, height: 19)
 
             Text(gpsDetail)
@@ -125,7 +125,7 @@ struct SpeedDashboardView: View {
         }
         .padding(.horizontal, 17)
         .padding(.vertical, 10)
-        .background(.white.opacity(0.025), in: Capsule())
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: Capsule())
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)
     }
@@ -152,14 +152,14 @@ struct SpeedDashboardView: View {
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 20)
-            .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 24))
         }
     }
 
     private var metricDivider: some View {
         Rectangle()
-            .fill(.white.opacity(0.11))
+            .fill(SpeedometerStyle.foreground.opacity(0.11))
             .frame(width: 1, height: 42)
     }
 
@@ -174,7 +174,7 @@ struct SpeedDashboardView: View {
 
             Text(value)
                 .font(.system(size: 19, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
@@ -203,7 +203,7 @@ struct SpeedDashboardView: View {
 
                     Text(primaryActionTitle)
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SpeedometerStyle.foreground)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 62)

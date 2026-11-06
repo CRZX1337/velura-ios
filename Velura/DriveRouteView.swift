@@ -80,7 +80,7 @@ struct DriveRouteView: View {
                     Text(dateChipText)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .tracking(1.1)
-                        .foregroundStyle(.white.opacity(0.88))
+                        .foregroundStyle(SpeedometerStyle.foreground.opacity(0.88))
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .glassEffect(.regular, in: .capsule)
@@ -94,7 +94,7 @@ struct DriveRouteView: View {
             .padding(.top, 10)
             .padding(.bottom, 12)
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(appearance.theme.colorScheme)
         .confirmationDialog("Delete this route?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete route", role: .destructive) {
                 onDeleteRoute()
@@ -145,10 +145,10 @@ struct DriveRouteView: View {
         ZStack {
             SpeedometerStyle.background
             Circle()
-                .stroke(.white.opacity(0.035), lineWidth: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.035), lineWidth: 1)
                 .frame(width: 300, height: 300)
             Circle()
-                .stroke(.white.opacity(0.025), lineWidth: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.025), lineWidth: 1)
                 .frame(width: 430, height: 430)
 
             VStack(spacing: 11) {
@@ -157,7 +157,7 @@ struct DriveRouteView: View {
                     .foregroundStyle(SpeedometerStyle.accent)
                 Text("No route recorded")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                 Text("A route will appear here when GPS locations were recorded during this drive.")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
@@ -165,7 +165,7 @@ struct DriveRouteView: View {
                     .frame(maxWidth: 270)
             }
             .padding(24)
-            .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 24))
         }
         .ignoresSafeArea()
@@ -176,7 +176,7 @@ struct DriveRouteView: View {
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                     .frame(width: 42, height: 42)
                     .glassEffect(.regular.interactive(), in: .circle)
             }
@@ -187,7 +187,7 @@ struct DriveRouteView: View {
 
             Text("Drive route")
                 .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
 
             Spacer()
 
@@ -198,11 +198,11 @@ struct DriveRouteView: View {
                     Group {
                         if isPreparingShare {
                             ProgressView()
-                                .tint(.white)
+                                .tint(SpeedometerStyle.foreground)
                         } else {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(SpeedometerStyle.foreground)
                         }
                     }
                     .frame(width: 42, height: 42)
@@ -275,18 +275,18 @@ struct DriveRouteView: View {
             UIColor(SpeedometerStyle.accent).setStroke()
             routePath.stroke()
 
-            drawRouteMarker(at: routePoints[0], color: UIColor(SpeedometerStyle.mint))
-            drawRouteMarker(at: routePoints[routePoints.count - 1], color: UIColor(SpeedometerStyle.warning))
+            drawRouteMarker(at: routePoints[0], color: SpeedometerStyle.mint)
+            drawRouteMarker(at: routePoints[routePoints.count - 1], color: SpeedometerStyle.warning)
         }
     }
 
-    private func drawRouteMarker(at point: CGPoint, color: UIColor) {
+    private func drawRouteMarker(at point: CGPoint, color: Color) {
         let marker = UIBezierPath(ovalIn: CGRect(x: point.x - 10, y: point.y - 10, width: 20, height: 20))
-        color.setFill()
+        UIColor(color).setFill()
         marker.fill()
 
         let center = UIBezierPath(ovalIn: CGRect(x: point.x - 4.5, y: point.y - 4.5, width: 9, height: 9))
-        UIColor.white.setFill()
+        UIColor(AppAppearance.shared.theme.foreground(on: color)).setFill()
         center.fill()
     }
 
@@ -295,7 +295,7 @@ struct DriveRouteView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(String(format: "%.1f", displayedDistance)) \(distanceUnit)")
                     .font(.system(size: 38, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                     .contentTransition(.numericText())
                 Text("DISTANCE")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -304,13 +304,13 @@ struct DriveRouteView: View {
             }
 
             Rectangle()
-                .fill(.white.opacity(0.11))
+                .fill(SpeedometerStyle.foreground.opacity(0.11))
                 .frame(height: 1)
 
             HStack(spacing: 0) {
                 summaryMetric(title: "TOP SPEED", value: "\(Int(displayedTopSpeed.rounded())) \(speedUnit)")
                 Rectangle()
-                    .fill(.white.opacity(0.12))
+                    .fill(SpeedometerStyle.foreground.opacity(0.12))
                     .frame(width: 1, height: 38)
                 summaryMetric(title: "DURATION", value: routeDuration(drive.duration))
             }
@@ -331,7 +331,7 @@ struct DriveRouteView: View {
             }
         }
         .padding(18)
-        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 25))
     }
 
@@ -343,7 +343,7 @@ struct DriveRouteView: View {
                 .foregroundStyle(SpeedometerStyle.secondary)
             Text(value)
                 .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
@@ -361,7 +361,7 @@ private struct RouteMapMarker: View {
             .frame(width: 20, height: 20)
             .overlay {
                 Circle()
-                    .fill(.white)
+                    .fill(AppAppearance.shared.theme.foreground(on: color))
                     .frame(width: 9, height: 9)
             }
             .shadow(color: color.opacity(0.55), radius: 8)
