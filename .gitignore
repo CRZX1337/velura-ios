@@ -2,3 +2,9 @@
 xcuserdata/
 build/
 DerivedData/
+
+
+# Apple signing assets
+*.p12
+*.mobileprovision
+*.provisionprofile
