@@ -1,5 +1,6 @@
 import MapKit
 import SwiftUI
+import UIKit
 
 struct DriveRouteView: View {
     let drive: DriveRecord
@@ -10,6 +11,10 @@ struct DriveRouteView: View {
     @State private var routeCoordinates: [DriveRoutePoint]
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var showingDeleteConfirmation = false
+    @State private var isPreparingShare = false
+    @State private var shareContent: RouteShareContent?
+    @State private var showingShareError = false
+    @State private var shareErrorMessage = ""
 
     init(drive: DriveRecord, onDeleteRoute: @escaping () -> Void) {
         self.drive = drive
@@ -100,6 +105,14 @@ struct DriveRouteView: View {
         } message: {
             Text("The route will be removed from this device. Drive statistics will be kept.")
         }
+        .sheet(item: $shareContent) { content in
+            RouteActivityView(activityItems: [content.message, content.mapImage])
+        }
+        .alert("Unable to share route", isPresented: $showingShareError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(shareErrorMessage)
+        }
     }
 
     private var routeMap: some View {
@@ -177,10 +190,103 @@ struct DriveRouteView: View {
 
             Spacer()
 
-            Color.clear
-                .frame(width: 42, height: 42)
-                .accessibilityHidden(true)
+            if routeCoordinates.count >= 2 {
+                Button {
+                    Task { await prepareShare() }
+                } label: {
+                    Group {
+                        if isPreparingShare {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(width: 42, height: 42)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+                .disabled(isPreparingShare)
+                .accessibilityLabel("Share drive route")
+            } else {
+                Color.clear
+                    .frame(width: 42, height: 42)
+                    .accessibilityHidden(true)
+            }
         }
+    }
+
+    @MainActor
+    private func prepareShare() async {
+        guard routeCoordinates.count >= 2 else { return }
+        isPreparingShare = true
+        defer { isPreparingShare = false }
+
+        do {
+            let mapImage = try await makeRouteImage()
+            let date = drive.date.formatted(date: .long, time: .shortened)
+            let message = [
+                "Velura drive · \(date)",
+                "Distance: \(String(format: "%.1f", displayedDistance)) \(distanceUnit)",
+                "Duration: \(routeDuration(drive.duration))",
+                "Top speed: \(Int(displayedTopSpeed.rounded())) \(speedUnit)"
+            ].joined(separator: "\n")
+            shareContent = RouteShareContent(message: message, mapImage: mapImage)
+        } catch {
+            shareErrorMessage = "The route map couldn't be prepared. Please try again."
+            showingShareError = true
+        }
+    }
+
+    private func makeRouteImage() async throws -> UIImage {
+        let options = MKMapSnapshotter.Options()
+        options.region = routeRegion
+        options.size = CGSize(width: 1200, height: 900)
+        options.mapType = .standard
+        options.pointOfInterestFilter = .excludingAll
+
+        let snapshotter = MKMapSnapshotter(options: options)
+        let snapshot: MKMapSnapshotter.Snapshot = try await withCheckedThrowingContinuation { continuation in
+            snapshotter.start { snapshot, error in
+                if let snapshot {
+                    continuation.resume(returning: snapshot)
+                } else {
+                    continuation.resume(throwing: error ?? RouteShareError.snapshotUnavailable)
+                }
+            }
+        }
+
+        let routePoints = coordinates.map { snapshot.point(for: $0) }
+        let renderer = UIGraphicsImageRenderer(size: snapshot.image.size)
+        return renderer.image { _ in
+            snapshot.image.draw(at: .zero)
+
+            let routePath = UIBezierPath()
+            routePath.lineWidth = 7
+            routePath.lineCapStyle = .round
+            routePath.lineJoinStyle = .round
+            routePath.move(to: routePoints[0])
+            for point in routePoints.dropFirst() {
+                routePath.addLine(to: point)
+            }
+            UIColor(red: 0.27, green: 0.79, blue: 0.98, alpha: 1).setStroke()
+            routePath.stroke()
+
+            drawRouteMarker(at: routePoints[0], color: UIColor(red: 0.34, green: 0.91, blue: 0.73, alpha: 1))
+            drawRouteMarker(at: routePoints[routePoints.count - 1], color: UIColor(red: 1, green: 0.55, blue: 0.30, alpha: 1))
+        }
+    }
+
+    private func drawRouteMarker(at point: CGPoint, color: UIColor) {
+        let marker = UIBezierPath(ovalIn: CGRect(x: point.x - 10, y: point.y - 10, width: 20, height: 20))
+        color.setFill()
+        marker.fill()
+
+        let center = UIBezierPath(ovalIn: CGRect(x: point.x - 4.5, y: point.y - 4.5, width: 9, height: 9))
+        UIColor.white.setFill()
+        center.fill()
     }
 
     private var summaryCard: some View {
@@ -268,4 +374,24 @@ private func routeDuration(_ duration: TimeInterval) -> String {
     let minutes = totalMinutes % 60
     if hours > 0 { return "\(hours)h \(minutes)m" }
     return "\(totalMinutes) min"
+}
+
+private struct RouteShareContent: Identifiable {
+    let id = UUID()
+    let message: String
+    let mapImage: UIImage
+}
+
+private struct RouteActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) { }
+}
+
+private enum RouteShareError: Error {
+    case snapshotUnavailable
 }
