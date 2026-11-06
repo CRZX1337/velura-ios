@@ -149,22 +149,8 @@ struct ContentView: View {
     }
 
     private var accelerationScreen: some View {
-        ZStack {
-            SpeedometerStyle.background.ignoresSafeArea()
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
-                    pageHeader(title: "Acceleration", subtitle: "Time your launch")
-                    if showsGPSStatus { gpsStatus }
-                    accelerationTest
-                    accelerationAttemptHistory
-                }
-                .padding(.horizontal, 22)
-                .padding(.top, 14)
-                .padding(.bottom, 28)
-                .frame(maxWidth: 520)
-                .frame(maxWidth: .infinity)
-            }
+        AccelerationTestView(model: model) {
+            selectedTab = .speedometer
         }
     }
 
