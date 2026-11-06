@@ -134,10 +134,10 @@ struct DriveHistoryView: View {
                         } else {
                             LazyVStack(alignment: .leading, spacing: 18) {
                                 ForEach(dayGroups) { group in
-                                    VStack(alignment: .leading, spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 6) {
                                         Text(group.title)
-                                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                                            .tracking(1.4)
+                                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                            .tracking(1.3)
                                             .foregroundStyle(SpeedometerStyle.secondary)
                                             .padding(.top, 3)
 
@@ -352,18 +352,18 @@ struct DriveHistoryView: View {
         let distance = monthDrives.reduce(0) { $0 + $1.distanceKm }
         let duration = monthDrives.reduce(0) { $0 + $1.duration }
 
-        return VStack(alignment: .leading, spacing: 16) {
+        return VStack(alignment: .leading, spacing: 17) {
             Text("THIS MONTH")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .tracking(1.35)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .tracking(1.25)
                 .foregroundStyle(SpeedometerStyle.secondary)
 
             HStack(spacing: 0) {
-                summaryMetric(value: "\(monthDrives.count)", caption: "DRIVES")
+                summaryMetric(value: "\(monthDrives.count)", caption: "drives")
                 summaryDivider
-                summaryMetric(value: String(format: "%.1f", distance), caption: "KM")
+                summaryMetric(value: "\(String(format: "%.0f", distance)) km", caption: "distance")
                 summaryDivider
-                summaryMetric(value: compactDuration(duration), caption: "TOTAL TIME")
+                summaryMetric(value: compactDuration(duration), caption: "total time")
             }
         }
         .padding(.horizontal, 16)
@@ -381,23 +381,22 @@ struct DriveHistoryView: View {
     private var summaryDivider: some View {
         Rectangle()
             .fill(.white.opacity(0.15))
-            .frame(width: 1, height: 42)
+            .frame(width: 1, height: 34)
     }
 
     private func summaryMetric(value: String, caption: String) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 5) {
             Text(value)
                 .font(.system(size: 23, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .minimumScaleFactor(0.68)
+                .minimumScaleFactor(0.62)
                 .contentTransition(.numericText())
             Text(caption)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .tracking(0.65)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .minimumScaleFactor(0.78)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
@@ -418,11 +417,12 @@ struct DriveHistoryView: View {
                         .background {
                             if isSelected {
                                 Capsule()
-                                    .fill(SpeedometerStyle.accent.opacity(0.9))
+                                    .fill(SpeedometerStyle.accent.opacity(0.2))
+                                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.35)), in: .capsule)
                                     .overlay {
-                                        Capsule().stroke(.white.opacity(0.2), lineWidth: 1)
+                                        Capsule().stroke(SpeedometerStyle.accent.opacity(0.7), lineWidth: 1)
                                     }
-                                    .shadow(color: SpeedometerStyle.accent.opacity(0.2), radius: 7, y: 2)
+                                    .shadow(color: SpeedometerStyle.accent.opacity(0.3), radius: 8, y: 2)
                             }
                         }
                 }
@@ -431,7 +431,7 @@ struct DriveHistoryView: View {
             }
         }
         .padding(4)
-        .background(.white.opacity(0.045), in: Capsule())
+        .background(.white.opacity(0.04), in: Capsule())
         .glassEffect(.regular, in: .capsule)
         .overlay {
             Capsule().stroke(.white.opacity(0.09), lineWidth: 1)
@@ -470,7 +470,7 @@ private struct DriveHistoryRow: View {
         Button(action: action) {
             HStack(spacing: 13) {
                 DriveRouteGlyph()
-                    .frame(width: 62, height: 62)
+                    .frame(width: 68, height: 56)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -490,29 +490,29 @@ private struct DriveHistoryRow: View {
 
                 Spacer(minLength: 5)
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("TOP SPEED")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .tracking(0.65)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Top")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                     Text("\(Int(drive.topSpeedKmh.rounded())) km/h")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                 }
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
                     .padding(.leading, 1)
             }
-            .padding(11)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
             .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 22))
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(.white.opacity(0.1), lineWidth: 1)
+                    .stroke(SpeedometerStyle.accent.opacity(0.16), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
@@ -544,6 +544,9 @@ private struct DriveRouteGlyph: View {
             route.addLine(to: CGPoint(x: size.width * 0.53, y: size.height * 0.69))
             route.addLine(to: CGPoint(x: size.width * 0.72, y: size.height * 0.5))
             route.addLine(to: CGPoint(x: size.width * 0.86, y: size.height * 0.2))
+            var glowContext = context
+            glowContext.addFilter(.blur(radius: 4))
+            glowContext.stroke(route, with: .color(SpeedometerStyle.accent.opacity(0.65)), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             context.stroke(route, with: .color(SpeedometerStyle.accent), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
 
             for point in [CGPoint(x: size.width * 0.16, y: size.height * 0.84), CGPoint(x: size.width * 0.86, y: size.height * 0.2)] {
