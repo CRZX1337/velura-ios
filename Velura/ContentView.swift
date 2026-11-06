@@ -18,6 +18,7 @@ private enum MainTab: Hashable {
 
 struct ContentView: View {
     @ObservedObject private var appearance = AppAppearance.shared
+    @ObservedObject private var dashboardLayout = AppDashboardLayout.shared
     @StateObject private var model = SpeedometerModel()
     @AppStorage("speedometer.selectedRange") private var selectedRange = 50
     @AppStorage("speedometer.customRange") private var customRange = 160
@@ -179,6 +180,7 @@ struct ContentView: View {
                     gpsStatusSetting
                     rangePicker
                     appearanceSection
+                    DashboardLayoutSettingsSection(layout: dashboardLayout)
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 14)

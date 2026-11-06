@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SpeedDashboardView: View {
     @ObservedObject private var appearance = AppAppearance.shared
+    @ObservedObject private var dashboardLayout = AppDashboardLayout.shared
     @ObservedObject var model: SpeedometerModel
 
     let dialStyle: SpeedometerDialStyle
@@ -27,22 +28,9 @@ struct SpeedDashboardView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: compact ? 14 : 19) {
                         brandHeader
-                        if showsGPSStatus { gpsStatusPill }
-
-                        SpeedometerGauge(
-                            speed: displayedSpeed,
-                            maximum: rangeMaximum,
-                            dialStyle: dialStyle,
-                            unit: unit,
-                            isOverspeed: model.isOverspeedWarningActive
-                        )
-                        .frame(height: gaugeHeight)
-                        .accessibilityLabel("Current speed")
-                        .accessibilityValue("\(Int(displayedSpeed.rounded())) \(unit)")
-
-                        driveMetrics
-                        sessionControls
-                        safetyNote
+                        ForEach(dashboardLayout.moduleOrder) { module in
+                            dashboardModule(module, gaugeHeight: gaugeHeight)
+                        }
                     }
                     .padding(.horizontal, geometry.size.width < 380 ? 18 : 22)
                     .padding(.top, compact ? 2 : 12)
@@ -50,6 +38,37 @@ struct SpeedDashboardView: View {
                     .frame(maxWidth: 520)
                     .frame(maxWidth: .infinity)
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dashboardModule(_ module: DashboardModule, gaugeHeight: CGFloat) -> some View {
+        switch module {
+        case .speed:
+            SpeedometerGauge(
+                speed: displayedSpeed,
+                maximum: rangeMaximum,
+                dialStyle: dialStyle,
+                unit: unit,
+                isOverspeed: model.isOverspeedWarningActive
+            )
+            .frame(height: gaugeHeight)
+            .accessibilityLabel("Current speed")
+            .accessibilityValue("\(Int(displayedSpeed.rounded())) \(unit)")
+        case .gpsStatus:
+            if showsGPSStatus && dashboardLayout.isVisible(module) {
+                gpsStatusPill
+            }
+        case .driveMetrics:
+            if dashboardLayout.isVisible(module) {
+                driveMetrics
+            }
+        case .sessionControls:
+            sessionControls
+        case .safetyNote:
+            if dashboardLayout.isVisible(module) {
+                safetyNote
             }
         }
     }
