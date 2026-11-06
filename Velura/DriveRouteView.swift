@@ -7,6 +7,7 @@ struct DriveRouteView: View {
     let onDeleteRoute: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var appearance = AppAppearance.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var routeCoordinates: [DriveRoutePoint]
@@ -69,8 +70,10 @@ struct DriveRouteView: View {
 
             if routeCoordinates.count >= 2 {
                 routeMap
+                    .transition(VeluraMotion.transition(.opacity, reduceMotion: reduceMotion))
             } else {
                 emptyMapState
+                    .transition(VeluraMotion.transition(.opacity, reduceMotion: reduceMotion))
             }
 
             VStack(spacing: 0) {
@@ -95,10 +98,11 @@ struct DriveRouteView: View {
             .padding(.bottom, 12)
         }
         .preferredColorScheme(appearance.theme.colorScheme)
+        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: routeCoordinates.count >= 2)
         .confirmationDialog("Delete this route?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete route", role: .destructive) {
                 onDeleteRoute()
-                withAnimation(.smooth(duration: 0.35)) {
+                withAnimation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion)) {
                     routeCoordinates.removeAll()
                 }
             }
@@ -211,6 +215,7 @@ struct DriveRouteView: View {
                 .buttonStyle(.plain)
                 .disabled(isPreparingShare)
                 .accessibilityLabel("Share drive route")
+                .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isPreparingShare)
             } else {
                 Color.clear
                     .frame(width: 42, height: 42)

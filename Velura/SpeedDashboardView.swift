@@ -1,11 +1,45 @@
 import SwiftUI
 
+enum DashboardDisplayScale: String, CaseIterable, Identifiable, Hashable {
+    case compact
+    case standard
+    case prominent
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .compact: "Compact"
+        case .standard: "Standard"
+        case .prominent: "Prominent"
+        }
+    }
+
+    var gaugeHeightMultiplier: CGFloat {
+        switch self {
+        case .compact: 0.86
+        case .standard: 1
+        case .prominent: 1.14
+        }
+    }
+
+    var readoutMultiplier: CGFloat {
+        switch self {
+        case .compact: 0.86
+        case .standard: 1
+        case .prominent: 1.14
+        }
+    }
+}
+
 struct SpeedDashboardView: View {
     @ObservedObject private var appearance = AppAppearance.shared
     @ObservedObject private var dashboardLayout = AppDashboardLayout.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var model: SpeedometerModel
 
     let dialStyle: SpeedometerDialStyle
+    let displayScale: DashboardDisplayScale
     let usesMiles: Bool
     let rangeMaximum: Double
     let showsGPSStatus: Bool
@@ -20,7 +54,8 @@ struct SpeedDashboardView: View {
     var body: some View {
         GeometryReader { geometry in
             let compact = geometry.size.height < 710
-            let gaugeHeight = min(max(geometry.size.height * 0.39, 274), 360)
+            let standardGaugeHeight = min(max(geometry.size.height * 0.39, 274), 360)
+            let gaugeHeight = min(max(standardGaugeHeight * displayScale.gaugeHeightMultiplier, 220), 410)
 
             ZStack {
                 SpeedometerStyle.background.ignoresSafeArea()
@@ -30,6 +65,7 @@ struct SpeedDashboardView: View {
                         brandHeader
                         ForEach(dashboardLayout.moduleOrder) { module in
                             dashboardModule(module, gaugeHeight: gaugeHeight)
+                                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
                         }
                     }
                     .padding(.horizontal, geometry.size.width < 380 ? 18 : 22)
@@ -37,6 +73,8 @@ struct SpeedDashboardView: View {
                     .padding(.bottom, 18)
                     .frame(maxWidth: 520)
                     .frame(maxWidth: .infinity)
+                    .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: dashboardLayout.visibleOptionalModules)
+                    .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: dashboardLayout.moduleOrder)
                 }
             }
         }
@@ -50,10 +88,12 @@ struct SpeedDashboardView: View {
                 speed: displayedSpeed,
                 maximum: rangeMaximum,
                 dialStyle: dialStyle,
+                displayScale: displayScale,
                 unit: unit,
                 isOverspeed: model.isOverspeedWarningActive
             )
             .frame(height: gaugeHeight)
+            .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: displayScale)
             .accessibilityLabel("Current speed")
             .accessibilityValue("\(Int(displayedSpeed.rounded())) \(unit)")
         case .gpsStatus:
@@ -128,6 +168,8 @@ struct SpeedDashboardView: View {
         .background(SpeedometerStyle.foreground.opacity(0.025), in: Capsule())
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.hasGPSFix)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
     }
 
     private var gpsDetail: String {
@@ -154,6 +196,9 @@ struct SpeedDashboardView: View {
             .padding(.vertical, 20)
             .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 24))
+            .transaction { transaction in
+                transaction.animation = VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion)
+            }
         }
     }
 
@@ -187,7 +232,7 @@ struct SpeedDashboardView: View {
     private var sessionControls: some View {
         VStack(spacing: 12) {
             Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                     if model.isSessionActive {
                         model.pauseSession()
                     } else {
@@ -199,11 +244,11 @@ struct SpeedDashboardView: View {
                     Image(systemName: model.isSessionActive ? "pause.fill" : "play.fill")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(SpeedometerStyle.accent)
-                        .symbolEffect(.bounce, value: model.isSessionActive)
 
                     Text(primaryActionTitle)
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
+                        .contentTransition(.opacity)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 62)
@@ -214,7 +259,7 @@ struct SpeedDashboardView: View {
 
             if model.hasUnfinishedSession {
                 Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                         model.finishSession()
                     }
                 } label: {
@@ -227,8 +272,11 @@ struct SpeedDashboardView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Finish and save this drive")
+                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
             }
         }
+        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: model.isSessionActive)
+        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: model.hasUnfinishedSession)
     }
 
     private var primaryActionTitle: String {

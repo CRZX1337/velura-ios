@@ -3,6 +3,7 @@ import SwiftUI
 struct AccelerationTestView: View {
     @ObservedObject var model: SpeedometerModel
     @ObservedObject private var appearance = AppAppearance.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onBack: () -> Void
 
     private var target: Int { Int(model.accelerationTargetKmh.rounded()) }
@@ -18,12 +19,16 @@ struct AccelerationTestView: View {
                     VStack(spacing: compact ? 14 : 18) {
                         header
                         targetPicker
-                        if model.accelerationPreset == -1 { customTargetControl }
+                        if model.accelerationPreset == -1 {
+                            customTargetControl
+                                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
+                        }
                         resultCard
                         bestTimeCard
                         actionButtons
                         if !model.accelerationAttempts.isEmpty {
                             attemptHistory
+                                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
                         }
                     }
                     .padding(.horizontal, geometry.size.width < 380 ? 18 : 22)
@@ -31,6 +36,8 @@ struct AccelerationTestView: View {
                     .padding(.bottom, 22)
                     .frame(maxWidth: 520)
                     .frame(maxWidth: .infinity)
+                    .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: model.accelerationPreset)
+                    .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: model.accelerationAttempts.map(\.id))
                 }
             }
         }
@@ -70,7 +77,7 @@ struct AccelerationTestView: View {
         HStack(spacing: 4) {
             ForEach([20, 50, 100], id: \.self) { preset in
                 targetButton(title: "0–\(preset)", isSelected: model.accelerationPreset == preset) {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                         model.selectAccelerationPreset(preset)
                     }
                 }
@@ -78,7 +85,7 @@ struct AccelerationTestView: View {
             }
 
             targetButton(title: "Custom", isSelected: model.accelerationPreset == -1) {
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                     model.selectCustomAccelerationTarget(Double(model.customAccelerationTargetKmh))
                 }
             }
@@ -93,6 +100,7 @@ struct AccelerationTestView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Acceleration target")
+        .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: model.accelerationPreset)
     }
 
     private func targetButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -152,7 +160,7 @@ struct AccelerationTestView: View {
             RoundedRectangle(cornerRadius: 19, style: .continuous)
                 .stroke(SpeedometerStyle.foreground.opacity(0.09), lineWidth: 1)
         }
-        .transition(.opacity.combined(with: .move(edge: .top)))
+        .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
     }
 
     private var resultCard: some View {
@@ -179,6 +187,9 @@ struct AccelerationTestView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Acceleration time")
                 .accessibilityValue("\(String(format: "%.2f", model.accelerationElapsed(at: context.date))) seconds")
+                .transaction { transaction in
+                    transaction.animation = VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion)
+                }
             }
 
             Text(stateDetail)
@@ -198,6 +209,8 @@ struct AccelerationTestView: View {
                 .stroke(SpeedometerStyle.foreground.opacity(0.12), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.accelerationState)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isNewAccelerationBest)
     }
 
     private var bestTimeCard: some View {
@@ -221,6 +234,7 @@ struct AccelerationTestView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(SpeedometerStyle.mint.opacity(0.1), in: Capsule())
+                    .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.96)), reduceMotion: reduceMotion))
             }
         }
         .padding(.horizontal, 20)
@@ -233,18 +247,21 @@ struct AccelerationTestView: View {
                 .stroke(SpeedometerStyle.foreground.opacity(0.1), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isNewAccelerationBest)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.bestAccelerationTime)
     }
 
     private var actionButtons: some View {
         VStack(spacing: 12) {
             Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                     model.startAccelerationTest()
                 }
             } label: {
                 Text(primaryActionTitle)
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.accentForeground)
+                    .contentTransition(.opacity)
                     .frame(maxWidth: .infinity)
                     .frame(height: 60)
                     .background(SpeedometerStyle.accent, in: Capsule())
@@ -257,7 +274,7 @@ struct AccelerationTestView: View {
             .accessibilityHint("Arms GPS timing from a standstill, or starts another run")
 
             Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                     model.resetAccelerationTest()
                 }
             } label: {
@@ -271,6 +288,7 @@ struct AccelerationTestView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Reset acceleration test")
         }
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.accelerationState)
     }
 
     private var attemptHistory: some View {

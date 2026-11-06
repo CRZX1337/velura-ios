@@ -18,6 +18,7 @@ private struct DriveDayGroup: Identifiable {
 
 struct DriveHistoryView: View {
     @ObservedObject private var appearance = AppAppearance.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store = DriveHistoryStore.shared
     @State private var filter: HistoryFilter = .all
     @State private var searchText = ""
@@ -119,17 +120,20 @@ struct DriveHistoryView: View {
                         monthSummary
                         if isSearchPresented {
                             searchField
-                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
                         }
                         filterControl
 
                         if dayGroups.isEmpty {
                             if !normalizedSearchQuery.isEmpty {
                                 noMatchesState
+                                    .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.98)), reduceMotion: reduceMotion))
                             } else if store.drives.isEmpty {
                                 emptyState
+                                    .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.98)), reduceMotion: reduceMotion))
                             } else {
                                 filterEmptyState
+                                    .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.98)), reduceMotion: reduceMotion))
                             }
                         } else {
                             LazyVStack(alignment: .leading, spacing: 18) {
@@ -145,9 +149,10 @@ struct DriveHistoryView: View {
                                             DriveHistoryRow(drive: drive) {
                                                 selectedDrive = drive
                                             }
+                                            .transition(VeluraMotion.transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity), reduceMotion: reduceMotion))
                                             .contextMenu {
                                                 Button(role: .destructive) {
-                                                    withAnimation(.snappy) { store.delete(drive.id) }
+                                                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { store.delete(drive.id) }
                                                 } label: {
                                                     Label("Delete drive", systemImage: "trash")
                                                 }
@@ -163,6 +168,8 @@ struct DriveHistoryView: View {
                     .padding(.bottom, 28)
                     .frame(maxWidth: 520)
                     .frame(maxWidth: .infinity)
+                    .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: filter.rawValue)
+                    .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: store.drives.count)
                 }
             }
         }
@@ -185,7 +192,7 @@ struct DriveHistoryView: View {
         }
         .confirmationDialog("Clear all drive history?", isPresented: $showingClearConfirmation, titleVisibility: .visible) {
             Button("Clear all history", role: .destructive) {
-                withAnimation(.snappy) { store.clear() }
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { store.clear() }
             }
             Button("Cancel", role: .cancel) { }
         } message: {
@@ -215,7 +222,7 @@ struct DriveHistoryView: View {
 
                 Menu {
                     Button {
-                        withAnimation(.snappy(duration: 0.28)) {
+                        withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                             if isSearchPresented {
                                 isSearchPresented = false
                                 searchText = ""
@@ -270,7 +277,7 @@ struct DriveHistoryView: View {
 
             if !searchText.isEmpty {
                 Button {
-                    withAnimation(.snappy) { searchText = "" }
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { searchText = "" }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 17))
@@ -299,7 +306,7 @@ struct DriveHistoryView: View {
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .multilineTextAlignment(.center)
             Button {
-                withAnimation(.snappy) { searchText = "" }
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { searchText = "" }
             } label: {
                 Label("Clear search", systemImage: "xmark.circle")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -330,7 +337,7 @@ struct DriveHistoryView: View {
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .multilineTextAlignment(.center)
             Button {
-                withAnimation(.snappy) { filter = .all }
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { filter = .all }
             } label: {
                 Label("Show all drives", systemImage: "clock.arrow.circlepath")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -407,7 +414,7 @@ struct DriveHistoryView: View {
             ForEach(HistoryFilter.allCases) { option in
                 let isSelected = filter == option
                 Button {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.8)) { filter = option }
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { filter = option }
                 } label: {
                     Text(option.rawValue)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))

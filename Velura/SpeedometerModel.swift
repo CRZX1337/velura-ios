@@ -118,6 +118,18 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         updateOverspeedWarning(triggerHaptic: false)
     }
 
+    func requestLocationAuthorization() {
+        guard locationManager.authorizationStatus == .notDetermined else {
+            authorizationStatus = locationManager.authorizationStatus
+            return
+        }
+        locationManager.requestWhenInUseAuthorization()
+    }
+
+    func refreshLocationAuthorizationStatus() {
+        authorizationStatus = locationManager.authorizationStatus
+    }
+
     func startSession() {
         switch locationManager.authorizationStatus {
         case .notDetermined:

@@ -22,6 +22,7 @@ private struct InsightBucket: Identifiable {
 
 struct DrivingInsightsView: View {
     @ObservedObject private var appearance = AppAppearance.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store = DriveHistoryStore.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var selectedPeriod: InsightsPeriod = .week
@@ -145,13 +146,17 @@ struct DrivingInsightsView: View {
                     if store.drives.isEmpty {
                         emptyState
                             .padding(.top, 42)
+                            .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.98)), reduceMotion: reduceMotion))
                     } else {
                         distanceSummary
                             .padding(.top, 28)
+                            .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
                         distanceChart
                             .padding(.top, 25)
+                            .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
                         metricsSummary
                             .padding(.top, 24)
+                            .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
                     }
                 }
                 .padding(.horizontal, 22)
@@ -164,7 +169,8 @@ struct DrivingInsightsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .preferredColorScheme(appearance.theme.colorScheme)
-        .animation(.snappy(duration: 0.3), value: selectedPeriod)
+        .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: selectedPeriod)
+        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: store.drives.count)
     }
 
     private var header: some View {
@@ -188,7 +194,7 @@ struct DrivingInsightsView: View {
             ForEach(InsightsPeriod.allCases) { period in
                 let isSelected = selectedPeriod == period
                 Button {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.8)) {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                         selectedPeriod = period
                     }
                 } label: {

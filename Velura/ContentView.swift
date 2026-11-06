@@ -25,12 +25,15 @@ struct ContentView: View {
     @AppStorage("speedometer.selectedRange") private var selectedRange = 50
     @AppStorage("speedometer.customRange") private var customRange = 160
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
+    @AppStorage("speedometer.dashboard.displayScale") private var dashboardDisplayScaleRawValue = DashboardDisplayScale.standard.rawValue
     @AppStorage("speedometer.showsGPSStatus") private var showsGPSStatus = true
     @AppStorage("speedometer.overspeed.enabled") private var overspeedWarningEnabled = false
     @AppStorage("speedometer.overspeed.thresholdKmh") private var overspeedThresholdKmh = 100.0
+    @AppStorage("speedometer.firstLaunchSetup.completed") private var hasCompletedFirstLaunchSetup = false
     @State private var showingResetConfirmation = false
     @State private var selectedTab: MainTab = .speedometer
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var unit: String { usesMiles ? "mph" : "km/h" }
     private var displayedSpeed: Double { usesMiles ? model.speedKmh * 0.621371 : model.speedKmh }
@@ -46,6 +49,23 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
+            if hasCompletedFirstLaunchSetup {
+                mainTabInterface
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .trailing)))
+            } else {
+                FirstLaunchSetupView(model: model, onContinue: completeFirstLaunchSetup)
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .leading)))
+            }
+        }
+        .animation(VeluraMotion.animation(VeluraMotion.tabChange, reduceMotion: reduceMotion), value: hasCompletedFirstLaunchSetup)
+    }
+
+    private func completeFirstLaunchSetup() {
+        hasCompletedFirstLaunchSetup = true
+    }
+
+    private var mainTabInterface: some View {
         TabView(selection: $selectedTab) {
             speedometerScreen
                 .tabItem { Label("Speed", systemImage: "speedometer") }
@@ -68,6 +88,7 @@ struct ContentView: View {
                 .tag(MainTab.settings)
         }
         .tint(SpeedometerStyle.accent)
+        .animation(VeluraMotion.animation(VeluraMotion.tabChange, reduceMotion: reduceMotion), value: selectedTab)
         .preferredColorScheme(appearance.theme.colorScheme)
         .safeAreaInset(edge: .top, spacing: 0) {
             if model.isOverspeedWarningActive {
@@ -75,10 +96,10 @@ struct ContentView: View {
                     .padding(.horizontal, 22)
                     .padding(.top, 8)
                     .padding(.bottom, 6)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(VeluraMotion.transition(.move(edge: .top).combined(with: .opacity), reduceMotion: reduceMotion))
             }
         }
-        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: model.isOverspeedWarningActive)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isOverspeedWarningActive)
         .onAppear(perform: syncOverspeedWarning)
         .onChange(of: overspeedWarningEnabled) { _, _ in syncOverspeedWarning() }
         .onChange(of: overspeedThresholdKmh) { _, _ in syncOverspeedWarning() }
@@ -103,7 +124,7 @@ struct ContentView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(SpeedometerStyle.warning)
-                .symbolEffect(.pulse, options: .repeating, isActive: model.isOverspeedWarningActive)
+                .symbolEffect(.pulse, options: .repeating, isActive: model.isOverspeedWarningActive && !reduceMotion)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("SPEED WARNING")
@@ -137,6 +158,7 @@ struct ContentView: View {
         SpeedDashboardView(
             model: model,
             dialStyle: appearance.dialStyle,
+            displayScale: DashboardDisplayScale(rawValue: dashboardDisplayScaleRawValue) ?? .standard,
             usesMiles: usesMiles,
             rangeMaximum: rangeMaximum,
             showsGPSStatus: showsGPSStatus,
@@ -144,7 +166,7 @@ struct ContentView: View {
         )
         .confirmationDialog("Reset this drive?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
             Button("Reset drive", role: .destructive) {
-                withAnimation(.snappy) { model.resetSession() }
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { model.resetSession() }
             }
             Button("Cancel", role: .cancel) { }
         } message: {
@@ -169,6 +191,7 @@ struct ContentView: View {
                     speedWarningSetting
                     gpsStatusSetting
                     rangePicker
+                    dashboardDisplayScaleSetting
                     appearanceSection
                     DashboardLayoutSettingsSection(layout: dashboardLayout)
                 }
@@ -179,6 +202,39 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
             }
         }
+    }
+
+    private var dashboardDisplayScaleSetting: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(SpeedometerStyle.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Dashboard display")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                    Text("Scale the gauge and speed readout")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                }
+            }
+
+            Picker("Dashboard scale", selection: $dashboardDisplayScaleRawValue) {
+                ForEach(DashboardDisplayScale.allCases) { scale in
+                    Text(scale.title).tag(scale.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Dashboard display scale")
+
+            Text("Controls and trip metrics stay full size.")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.secondary)
+        }
+        .padding(15)
+        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 21))
     }
 
     private var appearanceSection: some View {
@@ -211,7 +267,7 @@ struct ContentView: View {
 
             if appearance.theme == .custom {
                 customThemeControls
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
             }
 
             Rectangle()
@@ -223,7 +279,7 @@ struct ContentView: View {
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .tracking(1.1)
                     .foregroundStyle(SpeedometerStyle.secondary)
-                HStack(spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
                     ForEach(SpeedometerDialStyle.allCases) { style in
                         dialOption(style)
                     }
@@ -256,7 +312,7 @@ struct ContentView: View {
             customThemePreview
 
             Button {
-                withAnimation(.snappy(duration: 0.3)) {
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                     appearance.resetCustomColors()
                 }
             } label: {
@@ -349,7 +405,7 @@ struct ContentView: View {
     private func themeOption(_ theme: AppearanceTheme) -> some View {
         let isSelected = appearance.theme == theme
         return Button {
-            withAnimation(.snappy(duration: 0.3)) { appearance.theme = theme }
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { appearance.theme = theme }
         } label: {
             VStack(alignment: .leading, spacing: 7) {
                 themePreview(theme)
@@ -416,7 +472,7 @@ struct ContentView: View {
     private func dialOption(_ style: SpeedometerDialStyle) -> some View {
         let isSelected = appearance.dialStyle == style
         return Button {
-            withAnimation(.snappy(duration: 0.3)) { appearance.dialStyle = style }
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { appearance.dialStyle = style }
         } label: {
             VStack(spacing: 5) {
                 dialPreview(style)
@@ -448,7 +504,23 @@ struct ContentView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    @ViewBuilder
     private func dialPreview(_ style: SpeedometerDialStyle) -> some View {
+        switch style {
+        case .classic, .minimal, .sport:
+            classicDialPreview(style)
+        case .analog:
+            analogDialPreview
+        case .segmentedLED:
+            segmentedDialPreview
+        case .digitalHUD:
+            digitalDialPreview
+        case .twinRing:
+            twinRingDialPreview
+        }
+    }
+
+    private func classicDialPreview(_ style: SpeedometerDialStyle) -> some View {
         ZStack {
             GaugeArc(progress: 1)
                 .stroke(SpeedometerStyle.foreground.opacity(0.14), style: StrokeStyle(lineWidth: style.trackWidth * 0.45, lineCap: .round))
@@ -476,6 +548,96 @@ struct ContentView: View {
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .offset(y: 5)
         }
+    }
+
+    private var analogDialPreview: some View {
+        ZStack {
+            GaugeArc(progress: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.14), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+            GaugeTicks(tickCount: 32, majorTickInterval: 8)
+                .stroke(SpeedometerStyle.secondary.opacity(0.75), style: StrokeStyle(lineWidth: 0.65, lineCap: .round))
+            GaugeNeedle(progress: gaugePreviewProgress)
+                .stroke(SpeedometerStyle.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            Circle()
+                .fill(SpeedometerStyle.accent)
+                .frame(width: 4, height: 4)
+            Text(String(format: "%.0f", displayedSpeed))
+                .font(.system(size: 8, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(SpeedometerStyle.foreground)
+                .offset(y: 5)
+        }
+        .frame(width: 60, height: 45)
+        .offset(y: 5)
+    }
+
+    private var segmentedDialPreview: some View {
+        ZStack {
+            SegmentedGaugeArc(
+                progress: gaugePreviewProgress,
+                activeColor: SpeedometerStyle.accent,
+                inactiveColor: SpeedometerStyle.foreground.opacity(0.14),
+                segmentCount: 24,
+                radiusFraction: 0.43,
+                lineWidth: 3
+            )
+            Text(String(format: "%.0f", displayedSpeed))
+                .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                .foregroundStyle(SpeedometerStyle.foreground)
+                .offset(y: 5)
+        }
+        .frame(width: 60, height: 45)
+        .offset(y: 5)
+    }
+
+    private var digitalDialPreview: some View {
+        VStack(spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(String(format: "%.0f", displayedSpeed))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                Text(unit)
+                    .font(.system(size: 5, weight: .medium, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.secondary)
+            }
+            .foregroundStyle(SpeedometerStyle.foreground)
+
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(SpeedometerStyle.foreground.opacity(0.16))
+                    Capsule()
+                        .fill(SpeedometerStyle.accent)
+                        .frame(width: geometry.size.width * CGFloat(gaugePreviewProgress))
+                }
+            }
+            .frame(height: 3)
+
+            HStack {
+                Text("0")
+                Spacer()
+                Text("\(Int(rangeMaximum))")
+            }
+            .font(.system(size: 5, weight: .medium, design: .rounded).monospacedDigit())
+            .foregroundStyle(SpeedometerStyle.secondary)
+        }
+        .frame(width: 60, height: 40)
+    }
+
+    private var twinRingDialPreview: some View {
+        ZStack {
+            GaugeArc(progress: 1, radiusFraction: 0.43)
+                .stroke(SpeedometerStyle.foreground.opacity(0.13), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            GaugeArc(progress: gaugePreviewProgress, radiusFraction: 0.43)
+                .stroke(SpeedometerStyle.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            GaugeArc(progress: 1, radiusFraction: 0.30)
+                .stroke(SpeedometerStyle.foreground.opacity(0.10), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+            GaugeArc(progress: gaugePreviewProgress, radiusFraction: 0.30)
+                .stroke(SpeedometerStyle.mint, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+            Text(String(format: "%.0f", displayedSpeed))
+                .font(.system(size: 9, weight: .medium, design: .rounded).monospacedDigit())
+                .foregroundStyle(SpeedometerStyle.foreground)
+                .offset(y: 5)
+        }
+        .frame(width: 60, height: 45)
+        .offset(y: 5)
     }
 
     private func pageHeader(title: String, subtitle: String) -> some View {
@@ -603,7 +765,7 @@ struct ContentView: View {
                 Image(systemName: model.hasGPSFix ? "location.fill" : "location")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(model.hasGPSFix ? SpeedometerStyle.mint : SpeedometerStyle.secondary)
-                    .symbolEffect(.pulse, options: .repeating, isActive: model.isSessionActive && !model.hasGPSFix)
+                    .symbolEffect(.pulse, options: .repeating, isActive: model.isSessionActive && !model.hasGPSFix && !reduceMotion)
             }
 
             VStack(alignment: .leading, spacing: 3) {
@@ -630,6 +792,8 @@ struct ContentView: View {
         .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 20))
         .accessibilityElement(children: .combine)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.hasGPSFix)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
     }
 
     private var accelerationTest: some View {
@@ -654,7 +818,7 @@ struct ContentView: View {
                 accelerationPresetButton(50)
                 accelerationPresetButton(100)
                 Button {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.76)) {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                         model.selectCustomAccelerationTarget(Double(model.customAccelerationTargetKmh))
                     }
                 } label: {
@@ -684,7 +848,7 @@ struct ContentView: View {
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
             }
 
             HStack(alignment: .center, spacing: 12) {
@@ -719,7 +883,7 @@ struct ContentView: View {
             }
 
             Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                     if model.accelerationState == .waitingForMovement || model.accelerationState == .timing {
                         model.resetAccelerationTest()
                     } else {
@@ -730,7 +894,6 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Image(systemName: accelerationButtonSymbol)
                         .font(.system(size: 11, weight: .bold))
-                        .symbolEffect(.bounce, value: model.accelerationState)
                     Text(accelerationButtonTitle)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                 }
@@ -746,6 +909,8 @@ struct ContentView: View {
         .padding(.vertical, 13)
         .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.accelerationState)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isNewAccelerationBest)
     }
 
     private var accelerationAttemptHistory: some View {
@@ -845,7 +1010,7 @@ struct ContentView: View {
     private func accelerationPresetButton(_ preset: Int) -> some View {
         let isSelected = model.accelerationPreset == preset
         return Button {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.76)) {
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                 model.selectAccelerationPreset(preset)
             }
         } label: {
@@ -921,7 +1086,7 @@ struct ContentView: View {
                 rangeButton(50)
                 rangeButton(100)
                 Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) { selectedRange = -1 }
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { selectedRange = -1 }
                 } label: {
                     Text("Custom")
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -952,7 +1117,7 @@ struct ContentView: View {
                     .font(.system(size: 9, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
             }
         }
         .padding(.horizontal, 15)
@@ -964,7 +1129,7 @@ struct ContentView: View {
     private func rangeButton(_ value: Int) -> some View {
         let isSelected = selectedRange == value
         return Button {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.74)) { selectedRange = value }
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { selectedRange = value }
         } label: {
             Text("0–\(value)")
                 .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
@@ -981,9 +1146,11 @@ struct ContentView: View {
 
 struct SpeedometerGauge: View {
     @ObservedObject private var appearance = AppAppearance.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let speed: Double
     let maximum: Double
     let dialStyle: SpeedometerDialStyle
+    let displayScale: DashboardDisplayScale
     let unit: String
     let isOverspeed: Bool
 
@@ -997,10 +1164,65 @@ struct SpeedometerGauge: View {
             let diameter = min(proxy.size.width, proxy.size.height)
             let center = CGPoint(x: proxy.size.width / 2, y: diameter / 2)
             let radius = diameter * 0.43
-            let indicatorAngle = (150 + 240 * progress) * .pi / 180
             let gaugeColor = isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.accent
 
             ZStack {
+                if dialStyle == .digitalHUD {
+                    digitalHUD(gaugeColor: gaugeColor)
+                        .frame(width: min(proxy.size.width * 0.94, 420))
+                        .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                } else {
+                    dialFace(diameter: diameter, center: center, radius: radius, gaugeColor: gaugeColor)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Current speed")
+            .accessibilityValue("\(Int(speed.rounded())) \(unit)")
+            .accessibilityHint(isOverspeed ? "Speed warning active" : "Dial range zero to \(Int(maximum)) \(unit)")
+        }
+    }
+
+    @ViewBuilder
+    private func dialFace(diameter: CGFloat, center: CGPoint, radius: CGFloat, gaugeColor: Color) -> some View {
+        ZStack {
+            if dialStyle == .twinRing {
+                GaugeArc(progress: 1, radiusFraction: 0.43)
+                    .stroke(SpeedometerStyle.foreground.opacity(0.10), style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
+                    .frame(width: diameter, height: diameter)
+                    .position(center)
+                GaugeArc(progress: progress, radiusFraction: 0.43)
+                    .stroke(gaugeColor, style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
+                    .shadow(color: gaugeColor.opacity(0.38), radius: 8)
+                    .frame(width: diameter, height: diameter)
+                    .position(center)
+                    .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+
+                let innerColor = isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.mint
+                GaugeArc(progress: 1, radiusFraction: 0.31)
+                    .stroke(SpeedometerStyle.foreground.opacity(0.08), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .frame(width: diameter, height: diameter)
+                    .position(center)
+                GaugeArc(progress: progress, radiusFraction: 0.31)
+                    .stroke(innerColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .shadow(color: innerColor.opacity(0.35), radius: 6)
+                    .frame(width: diameter, height: diameter)
+                    .position(center)
+                    .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+                    .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
+            } else if dialStyle == .segmentedLED {
+                SegmentedGaugeArc(
+                    progress: progress,
+                    activeColor: gaugeColor,
+                    inactiveColor: SpeedometerStyle.foreground.opacity(0.15),
+                    segmentCount: 48,
+                    radiusFraction: 0.43,
+                    lineWidth: dialStyle.trackWidth
+                )
+                .frame(width: diameter, height: diameter)
+                .position(center)
+                .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+            } else {
                 if dialStyle == .sport {
                     GaugeArc(progress: 1)
                         .trim(from: 0.84, to: 1)
@@ -1021,61 +1243,126 @@ struct SpeedometerGauge: View {
                         .position(center)
                 }
 
-                GaugeArc(progress: progress)
-                    .stroke(gaugeColor, style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
-                    .shadow(color: gaugeColor.opacity(0.42), radius: 10)
-                    .frame(width: diameter, height: diameter)
-                    .position(center)
-                    .animation(.smooth(duration: 0.65), value: progress)
-                    .animation(.snappy(duration: 0.3), value: isOverspeed)
+                if dialStyle == .analog {
+                    GaugeNeedle(progress: progress)
+                        .stroke(gaugeColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .shadow(color: gaugeColor.opacity(0.35), radius: 5)
+                        .frame(width: diameter, height: diameter)
+                        .position(center)
+                        .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+                    Circle()
+                        .fill(gaugeColor)
+                        .frame(width: 14, height: 14)
+                        .overlay {
+                            Circle().stroke(SpeedometerStyle.background, lineWidth: 3)
+                        }
+                        .position(center)
+                } else {
+                    GaugeArc(progress: progress)
+                        .stroke(gaugeColor, style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
+                        .shadow(color: gaugeColor.opacity(0.42), radius: 10)
+                        .frame(width: diameter, height: diameter)
+                        .position(center)
+                        .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+                        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
 
-                Circle()
-                    .fill(gaugeColor)
-                    .frame(width: dialStyle == .sport ? 12 : 10, height: dialStyle == .sport ? 12 : 10)
-                    .shadow(color: gaugeColor.opacity(0.75), radius: 8)
-                    .position(x: center.x + cos(indicatorAngle) * radius, y: center.y + sin(indicatorAngle) * radius)
-                    .animation(.spring(response: 0.65, dampingFraction: 0.82), value: progress)
-
-                ForEach(0..<dialStyle.labelCount, id: \.self) { index in
-                    let fraction = Double(index) / Double(dialStyle.labelCount - 1)
-                    let angle = (150 + 240 * fraction) * .pi / 180
-                    let labelRadius = radius * 0.77
-                    Text(index == dialStyle.labelCount - 1 ? "\(Int(maximum))" : "\(Int(maximum * fraction))")
-                        .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
-                        .foregroundStyle(SpeedometerStyle.secondary)
-                        .position(x: center.x + cos(angle) * labelRadius, y: center.y + sin(angle) * labelRadius)
+                    let indicatorAngle = (150 + 240 * progress) * .pi / 180
+                    Circle()
+                        .fill(gaugeColor)
+                        .frame(width: dialStyle == .sport ? 12 : 10, height: dialStyle == .sport ? 12 : 10)
+                        .shadow(color: gaugeColor.opacity(0.75), radius: 8)
+                        .position(x: center.x + cos(indicatorAngle) * radius, y: center.y + sin(indicatorAngle) * radius)
+                        .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
                 }
-
-                VStack(spacing: 1) {
-                    Text(String(format: "%.0f", speed))
-                        .font(.system(size: 76, weight: .light, design: .rounded).monospacedDigit())
-                        .foregroundStyle(isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.foreground)
-                        .contentTransition(.numericText())
-                        .minimumScaleFactor(0.68)
-                        .lineLimit(1)
-                    Text(unit)
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.secondary)
-                }
-                .position(x: center.x, y: center.y + 2)
-                .animation(.snappy(duration: 0.35), value: speed)
-                .animation(.snappy(duration: 0.3), value: isOverspeed)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Current speed")
-            .accessibilityValue("\(Int(speed.rounded())) \(unit)")
-            .accessibilityHint(isOverspeed ? "Speed warning active" : "Dial range zero to \(Int(maximum)) \(unit)")
+
+            ForEach(0..<dialStyle.labelCount, id: \.self) { index in
+                let fraction = Double(index) / Double(dialStyle.labelCount - 1)
+                let angle = (150 + 240 * fraction) * .pi / 180
+                let labelRadius = radius * 0.77
+                Text(index == dialStyle.labelCount - 1 ? "\(Int(maximum))" : "\(Int(maximum * fraction))")
+                    .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                    .position(x: center.x + cos(angle) * labelRadius, y: center.y + sin(angle) * labelRadius)
+            }
+
+            VStack(spacing: 1) {
+                Text(String(format: "%.0f", speed))
+                    .font(.system(size: 76 * displayScale.readoutMultiplier, weight: .light, design: .rounded).monospacedDigit())
+                    .foregroundStyle(isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.foreground)
+                    .contentTransition(.numericText())
+                    .minimumScaleFactor(0.68)
+                    .lineLimit(1)
+                Text(unit)
+                    .font(.system(size: 15 * displayScale.readoutMultiplier, weight: .medium, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.secondary)
+            }
+            .position(x: center.x, y: center.y + 2)
+            .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: speed)
+            .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
         }
+    }
+
+    private func digitalHUD(gaugeColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 17) {
+            HStack {
+                Text("LIVE SPEED")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1.3)
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                Spacer()
+                Image(systemName: "waveform.path")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(gaugeColor)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(String(format: "%.0f", speed))
+                    .font(.system(size: 72 * displayScale.readoutMultiplier, weight: .light, design: .rounded).monospacedDigit())
+                    .foregroundStyle(isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.foreground)
+                    .contentTransition(.numericText())
+                    .minimumScaleFactor(0.68)
+                    .lineLimit(1)
+                Text(unit)
+                    .font(.system(size: 15 * displayScale.readoutMultiplier, weight: .medium, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.secondary)
+            }
+
+            HStack(spacing: 10) {
+                Text("0")
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(SpeedometerStyle.foreground.opacity(0.14))
+                        Capsule()
+                            .fill(gaugeColor)
+                            .frame(width: geometry.size.width * CGFloat(progress))
+                    }
+                }
+                .frame(height: 8)
+                Text("\(Int(maximum))")
+            }
+            .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+            .foregroundStyle(SpeedometerStyle.secondary)
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity)
+        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(gaugeColor.opacity(0.3), lineWidth: 1)
+        }
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: speed)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
     }
 }
 
 private struct GaugeArc: Shape {
     var progress: Double
+    var radiusFraction: CGFloat = 0.43
 
     func path(in rect: CGRect) -> Path {
         let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = min(rect.width, rect.height) * 0.43
+        let radius = min(rect.width, rect.height) * radiusFraction
         var path = Path()
         path.addArc(
             center: center,
@@ -1085,6 +1372,54 @@ private struct GaugeArc: Shape {
             clockwise: false
         )
         return path
+    }
+}
+
+private struct GaugeNeedle: Shape {
+    let progress: Double
+
+    func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let angle = (150 + 240 * min(max(progress, 0), 1)) * .pi / 180
+        let radius = min(rect.width, rect.height) * 0.34
+        let tip = CGPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius)
+        var path = Path()
+        path.move(to: center)
+        path.addLine(to: tip)
+        return path
+    }
+}
+
+private struct SegmentedGaugeArc: View {
+    let progress: Double
+    let activeColor: Color
+    let inactiveColor: Color
+    let segmentCount: Int
+    let radiusFraction: CGFloat
+    let lineWidth: CGFloat
+
+    var body: some View {
+        Canvas { context, size in
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let radius = min(size.width, size.height) * radiusFraction
+            let segmentStep = 240.0 / Double(segmentCount)
+            let segmentSweep = segmentStep * 0.68
+
+            for index in 0..<segmentCount {
+                let start = 150 + segmentStep * Double(index)
+                var segment = Path()
+                segment.addArc(
+                    center: center,
+                    radius: radius,
+                    startAngle: .degrees(start),
+                    endAngle: .degrees(start + segmentSweep),
+                    clockwise: false
+                )
+                let color = Double(index) / Double(segmentCount) < progress ? activeColor : inactiveColor
+                context.stroke(segment, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

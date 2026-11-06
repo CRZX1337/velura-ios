@@ -143,6 +143,7 @@ final class AppDashboardLayout: ObservableObject {
 struct DashboardLayoutSettingsSection: View {
     @ObservedObject var layout: AppDashboardLayout
     @ObservedObject private var appearance = AppAppearance.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingEditor = false
 
     var body: some View {
@@ -210,7 +211,7 @@ struct DashboardLayoutSettingsSection: View {
     private func presetButton(_ preset: DashboardLayoutPreset) -> some View {
         let isSelected = layout.matches(preset)
         return Button {
-            withAnimation(.snappy(duration: 0.3)) { layout.apply(preset) }
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { layout.apply(preset) }
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: preset == .full ? "rectangle.stack" : "rectangle.compress.vertical")
@@ -242,6 +243,7 @@ private struct DashboardLayoutEditor: View {
     @ObservedObject var layout: AppDashboardLayout
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         List {
@@ -262,6 +264,8 @@ private struct DashboardLayoutEditor: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(SpeedometerStyle.background)
+        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: layout.moduleOrder)
+        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: layout.visibleOptionalModules)
         .navigationTitle("Dashboard layout")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
