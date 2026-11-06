@@ -19,6 +19,7 @@ private struct DriveDayGroup: Identifiable {
 struct DriveHistoryView: View {
     @StateObject private var store = DriveHistoryStore.shared
     @State private var filter: HistoryFilter = .all
+    @State private var searchText = ""
     @State private var selectedDrive: DriveRecord?
     @State private var showingClearConfirmation = false
 
@@ -30,32 +31,72 @@ struct DriveHistoryView: View {
     private var filteredDrives: [DriveRecord] {
         let calendar = Calendar.current
         let now = Date.now
+        let dateFilteredDrives: [DriveRecord]
         switch filter {
         case .all:
-            return store.drives
+            dateFilteredDrives = store.drives
         case .thisWeek:
-            guard let interval = calendar.dateInterval(of: .weekOfYear, for: now) else { return store.drives }
-            return store.drives.filter { interval.contains($0.date) }
+            if let interval = calendar.dateInterval(of: .weekOfYear, for: now) {
+                dateFilteredDrives = store.drives.filter { interval.contains($0.date) }
+            } else {
+                dateFilteredDrives = store.drives
+            }
         case .thisMonth:
-            guard let interval = calendar.dateInterval(of: .month, for: now) else { return store.drives }
-            return store.drives.filter { interval.contains($0.date) }
+            if let interval = calendar.dateInterval(of: .month, for: now) {
+                dateFilteredDrives = store.drives.filter { interval.contains($0.date) }
+            } else {
+                dateFilteredDrives = store.drives
+            }
         }
+
+        let query = normalizedSearchQuery
+        guard !query.isEmpty else { return dateFilteredDrives }
+        return dateFilteredDrives.filter { searchableText(for: $0).contains(query) }
+    }
+
+    private var normalizedSearchQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
     }
 
     private var dayGroups: [DriveDayGroup] {
         let calendar = Calendar.current
         let grouped = Dictionary(grouping: filteredDrives) { calendar.startOfDay(for: $0.date) }
         return grouped.keys.sorted(by: >).map { day in
-            let title: String
-            if calendar.isDateInToday(day) {
-                title = "TODAY"
-            } else if calendar.isDateInYesterday(day) {
-                title = "YESTERDAY"
-            } else {
-                title = day.formatted(.dateTime.month(.wide).day().year())
-            }
-            return DriveDayGroup(date: day, title: title, drives: grouped[day] ?? [])
+            DriveDayGroup(date: day, title: dayTitle(for: day), drives: grouped[day] ?? [])
         }
+    }
+
+    private func dayTitle(for date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "TODAY"
+        }
+        if calendar.isDateInYesterday(date) {
+            return "YESTERDAY"
+        }
+        return date.formatted(.dateTime.month(.wide).day().year())
+    }
+
+    private func searchableText(for drive: DriveRecord) -> String {
+        let dateValues = [
+            dayTitle(for: drive.date),
+            drive.date.formatted(date: .omitted, time: .shortened),
+            drive.date.formatted(date: .complete, time: .shortened),
+            drive.date.formatted(date: .long, time: .shortened),
+            drive.date.formatted(date: .abbreviated, time: .shortened),
+            drive.date.formatted(date: .numeric, time: .shortened)
+        ]
+        let values = dateValues + [
+            String(format: "%.1f km", drive.distanceKm),
+            String(format: "%.2f km", drive.distanceKm),
+            rowDuration(drive.duration),
+            detailedDuration(drive.duration),
+            "\(Int(drive.topSpeedKmh.rounded())) km/h"
+        ]
+        return values
+            .map { $0.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) }
+            .joined(separator: " ")
     }
 
     var body: some View {
@@ -66,10 +107,17 @@ struct DriveHistoryView: View {
                 VStack(spacing: 19) {
                     header
                     monthSummary
+                    searchField
                     filterControl
 
                     if dayGroups.isEmpty {
-                        emptyState
+                        if !normalizedSearchQuery.isEmpty {
+                            noMatchesState
+                        } else if store.drives.isEmpty {
+                            emptyState
+                        } else {
+                            filterEmptyState
+                        }
                     } else {
                         LazyVStack(alignment: .leading, spacing: 18) {
                             ForEach(dayGroups) { group in
@@ -160,6 +208,100 @@ struct DriveHistoryView: View {
             .accessibilityLabel("Filter or clear drive history")
         }
         .frame(height: 46)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(SpeedometerStyle.secondary)
+
+            TextField("Search date, distance, duration or speed", text: $searchText)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(.white)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .accessibilityLabel("Search drives by date, distance, duration or top speed")
+
+            if !searchText.isEmpty {
+                Button {
+                    withAnimation(.snappy) { searchText = "" }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 17))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 46)
+        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+    }
+
+    private var noMatchesState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 27, weight: .light))
+                .foregroundStyle(SpeedometerStyle.accent)
+            Text("No matching drives")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+            Text("Try another date, distance, duration or top speed.")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                withAnimation(.snappy) { searchText = "" }
+            } label: {
+                Label("Clear search", systemImage: "xmark.circle")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.accent)
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.14)).interactive(), in: .capsule)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+        .padding(.horizontal, 16)
+        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    private var filterEmptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "calendar")
+                .font(.system(size: 27, weight: .light))
+                .foregroundStyle(SpeedometerStyle.accent)
+            Text(filter == .thisWeek ? "No drives this week" : "No drives this month")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+            Text("Change the time filter to see other saved drives.")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                withAnimation(.snappy) { filter = .all }
+            } label: {
+                Label("Show all drives", systemImage: "clock.arrow.circlepath")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.accent)
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.14)).interactive(), in: .capsule)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+        .padding(.horizontal, 16)
+        .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 
     private var monthSummary: some View {
