@@ -73,6 +73,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private let accelerationStartThresholdKmh = 2.0
     private var overspeedWarningEnabled = false
     private var overspeedThresholdKmh = 100.0
+    private var lastSnapshotWriteAt = Date.distantPast
+    private var lifecycleObservers: [NSObjectProtocol] = []
 
     override init() {
         authorizationStatus = locationManager.authorizationStatus
@@ -81,8 +83,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.distanceFilter = 2
         locationManager.activityType = .automotiveNavigation
-        locationManager.pausesLocationUpdatesAutomatically = true
+        locationManager.pausesLocationUpdatesAutomatically = false
         restoreAccelerationSettings()
+        restoreActiveDriveSnapshot()
+        observeAppLifecycle()
     }
 
     var isGPSFixStale: Bool {
@@ -335,12 +339,15 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             resetAccelerationTest()
         }
         accelerationInterruptedForGPS = false
+        configureBackgroundLocationUpdates(active: false)
         locationManager.stopUpdatingLocation()
+        persistActiveDrive(force: true)
     }
 
     func finishSession() {
         guard hasUnfinishedSession else { return }
         if isSessionActive {
+            configureBackgroundLocationUpdates(active: false)
             locationManager.stopUpdatingLocation()
         }
 
@@ -362,12 +369,15 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     func resetSession() {
         if isSessionActive {
+            configureBackgroundLocationUpdates(active: false)
             locationManager.stopUpdatingLocation()
         }
         pendingSessionStart = false
         isSessionActive = false
         stopGPSFreshnessMonitoring()
         hasUnfinishedSession = false
+        ActiveDriveStore.shared.clear()
+        lastSnapshotWriteAt = .distantPast
         if accelerationState == .waitingForMovement || accelerationState == .timing {
             resetAccelerationTest()
         }
@@ -450,6 +460,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             }
             previousLocation = location
         }
+
+        persistActiveDrive(force: false)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -533,7 +545,9 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         sessionStartedAt = Date()
         previousLocation = nil
         startGPSFreshnessMonitoring()
+        configureBackgroundLocationUpdates(active: true)
         locationManager.startUpdatingLocation()
+        persistActiveDrive(force: true)
     }
 
     private func recordRoutePoint(_ location: CLLocation, force: Bool = false) {
@@ -551,6 +565,61 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             longitude: location.coordinate.longitude,
             timestamp: location.timestamp
         ))
+    }
+
+    private var supportsBackgroundLocation: Bool {
+        (Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String])?.contains("location") == true
+    }
+
+    private func configureBackgroundLocationUpdates(active: Bool) {
+        guard supportsBackgroundLocation else { return }
+        locationManager.allowsBackgroundLocationUpdates = active
+        locationManager.showsBackgroundLocationIndicator = active
+    }
+
+    private func observeAppLifecycle() {
+        let center = NotificationCenter.default
+        let names: [Notification.Name] = [
+            UIApplication.willResignActiveNotification,
+            UIApplication.didEnterBackgroundNotification,
+            UIApplication.willTerminateNotification
+        ]
+        for name in names {
+            let observer = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.persistActiveDrive(force: true)
+                }
+            }
+            lifecycleObservers.append(observer)
+        }
+    }
+
+    private func persistActiveDrive(force: Bool) {
+        guard hasUnfinishedSession, let driveStartedAt else { return }
+        let now = Date()
+        guard force || now.timeIntervalSince(lastSnapshotWriteAt) >= 2 else { return }
+        lastSnapshotWriteAt = now
+        ActiveDriveStore.shared.save(ActiveDriveSnapshot(
+            startedAt: driveStartedAt,
+            elapsedSeconds: elapsedTime(at: now),
+            distanceKm: distanceKm,
+            topSpeedKmh: topSpeedKmh,
+            routeCoordinates: routeCoordinates,
+            updatedAt: now
+        ))
+    }
+
+    private func restoreActiveDriveSnapshot() {
+        guard let snapshot = ActiveDriveStore.shared.load() else { return }
+        hasUnfinishedSession = true
+        driveStartedAt = snapshot.startedAt
+        elapsedSeconds = snapshot.elapsedSeconds
+        distanceKm = snapshot.distanceKm
+        topSpeedKmh = snapshot.topSpeedKmh
+        routeCoordinates = snapshot.routeCoordinates
+        previousLocation = nil
+        lastValidLocation = nil
+        lastSnapshotWriteAt = snapshot.updatedAt
     }
 
     private func restoreAccelerationSettings() {
