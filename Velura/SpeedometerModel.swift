@@ -131,6 +131,71 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         elapsedSeconds + (sessionStartedAt.map { max(0, date.timeIntervalSince($0)) } ?? 0)
     }
 
+    var accelerationStatusTitle: String {
+        switch accelerationState {
+        case .ready:
+            if accelerationInterruptedForGPS { return "GPS INTERRUPTED" }
+            if isSessionActive && !hasCurrentGPSFix { return gpsStatusTitle }
+            if authorizationStatus == .denied || authorizationStatus == .restricted { return gpsStatusTitle }
+            return "READY"
+        case .waitingForMovement:
+            if !isSessionActive || !hasCurrentGPSFix { return gpsStatusTitle }
+            return canBeginAccelerationRun ? "ARMED" : "WAIT FOR STOP"
+        case .timing:
+            return "TIMING"
+        case .completed:
+            return isNewAccelerationBest ? "NEW BEST" : "COMPLETE"
+        }
+    }
+
+    func accelerationStatusDetail(target: Int, unit: String) -> String {
+        switch accelerationState {
+        case .ready:
+            if accelerationInterruptedForGPS {
+                return "GPS was lost; wait for a fresh fix and arm again"
+            }
+            if (isSessionActive && !hasCurrentGPSFix) || authorizationStatus == .denied || authorizationStatus == .restricted {
+                return gpsStatusDetail
+            }
+            return "Start from a standstill to begin timing"
+        case .waitingForMovement:
+            if !isSessionActive || !hasCurrentGPSFix {
+                return gpsStatusDetail == "Allow location access in Settings"
+                    ? "Allow location access to measure your launch"
+                    : gpsStatusDetail
+            }
+            return canBeginAccelerationRun
+                ? "Accelerate to \(target) \(unit) to start timing"
+                : "Come to a full stop to arm the timer"
+        case .timing:
+            return "Accelerate to \(target) \(unit)"
+        case .completed:
+            return isNewAccelerationBest ? "Target reached · new best saved" : "Target reached · run saved"
+        }
+    }
+
+    var accelerationPrimaryActionTitle: String {
+        switch accelerationState {
+        case .ready: "Arm test"
+        case .waitingForMovement: "Waiting for launch"
+        case .timing: "Timing run"
+        case .completed: "Try again"
+        }
+    }
+
+    var accelerationPrimaryActionSymbol: String {
+        switch accelerationState {
+        case .ready: "play.fill"
+        case .waitingForMovement: "hourglass"
+        case .timing: "speedometer"
+        case .completed: "arrow.counterclockwise"
+        }
+    }
+
+    var isAccelerationPrimaryActionEnabled: Bool {
+        accelerationState != .waitingForMovement && accelerationState != .timing
+    }
+
     func configureOverspeedWarning(enabled: Bool, thresholdKmh: Double) {
         overspeedWarningEnabled = enabled
         overspeedThresholdKmh = max(1, thresholdKmh)

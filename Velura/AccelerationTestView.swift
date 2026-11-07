@@ -251,7 +251,7 @@ struct AccelerationTestView: View {
                     model.startAccelerationTest()
                 }
             } label: {
-                Text(primaryActionTitle)
+                Text(model.accelerationPrimaryActionTitle)
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.accentForeground)
                     .contentTransition(.opacity)
@@ -263,8 +263,8 @@ struct AccelerationTestView: View {
                     .shadow(color: SpeedometerStyle.accent.opacity(0.34), radius: 15, y: 3)
             }
             .buttonStyle(.plain)
-            .disabled(model.accelerationState == .waitingForMovement || model.accelerationState == .timing)
-            .accessibilityHint("Arms GPS timing from a standstill, or starts another run")
+            .disabled(!model.isAccelerationPrimaryActionEnabled)
+            .accessibilityHint("Arms a GPS acceleration run when ready")
 
             Button {
                 withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
@@ -350,51 +350,11 @@ struct AccelerationTestView: View {
     }
 
     private var stateTitle: String {
-        switch model.accelerationState {
-        case .ready:
-            if model.accelerationInterruptedForGPS { return "GPS INTERRUPTED" }
-            if model.isSessionActive && !model.hasGPSFix { return model.gpsStatusTitle }
-            return "READY"
-        case .waitingForMovement:
-            if !model.isSessionActive || !model.hasGPSFix { return model.gpsStatusTitle }
-            return model.canBeginAccelerationRun ? "ARMED" : "WAIT FOR STOP"
-        case .timing: return "TIMING"
-        case .completed: return model.isNewAccelerationBest ? "NEW BEST" : "COMPLETE"
-        }
+        model.accelerationStatusTitle
     }
 
     private var stateDetail: String {
-        switch model.accelerationState {
-        case .ready:
-            if model.accelerationInterruptedForGPS {
-                return "GPS was lost; wait for a fresh fix and arm again"
-            }
-            if model.isSessionActive && !model.hasGPSFix { return model.gpsStatusDetail }
-            return "Start from a standstill to begin timing"
-        case .waitingForMovement:
-            if !model.isSessionActive || !model.hasGPSFix {
-                return model.gpsStatusDetail == "Allow location access in Settings"
-                    ? "Allow location access to measure your launch"
-                    : model.gpsStatusDetail
-            } else if model.canBeginAccelerationRun {
-                return "Accelerate to \(target) \(speedUnit) to start timing"
-            } else {
-                return "Come to a full stop to arm the timer"
-            }
-        case .timing:
-            return "Accelerate to \(target) \(speedUnit)"
-        case .completed:
-            return model.isNewAccelerationBest ? "Target reached · new best saved" : "Target reached · run saved"
-        }
-    }
-
-    private var primaryActionTitle: String {
-        switch model.accelerationState {
-        case .ready: return "Arm test"
-        case .waitingForMovement: return "Waiting for launch"
-        case .timing: return "Timing run"
-        case .completed: return "Try again"
-        }
+        model.accelerationStatusDetail(target: target, unit: speedUnit)
     }
 
     private func accelerationTimeText(_ time: TimeInterval) -> String {

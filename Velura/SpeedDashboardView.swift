@@ -43,6 +43,7 @@ struct SpeedDashboardView: View {
     let usesMiles: Bool
     let rangeMaximum: Double
     let showsGPSStatus: Bool
+    let accelerationControls: AnyView
     let onResetRequested: () -> Void
 
     private var unit: String { usesMiles ? "mph" : "km/h" }
@@ -67,6 +68,7 @@ struct SpeedDashboardView: View {
                             dashboardModule(module, gaugeHeight: gaugeHeight)
                                 .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
                         }
+                        accelerationControls
                     }
                     .padding(.horizontal, geometry.size.width < 380 ? 18 : 22)
                     .padding(.top, compact ? 2 : 12)

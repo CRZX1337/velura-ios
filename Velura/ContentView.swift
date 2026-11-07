@@ -169,6 +169,7 @@ struct ContentView: View {
             usesMiles: usesMiles,
             rangeMaximum: rangeMaximum,
             showsGPSStatus: showsGPSStatus,
+            accelerationControls: AnyView(accelerationTest),
             onResetRequested: { showingResetConfirmation = true }
         )
         .confirmationDialog("Reset this drive?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
@@ -835,6 +836,8 @@ struct ContentView: View {
                         .glassEffect(.regular.tint(model.accelerationPreset == -1 ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Custom acceleration target")
+                .accessibilityAddTraits(model.accelerationPreset == -1 ? .isSelected : [])
             }
 
             if model.accelerationPreset == -1 {
@@ -859,11 +862,11 @@ struct ContentView: View {
 
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(accelerationStatusTitle)
+                    Text(model.accelerationStatusTitle)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                         .contentTransition(.opacity)
-                    Text(accelerationStatusDetail)
+                    Text(model.accelerationStatusDetail(target: displayedAccelerationTarget, unit: unit))
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .lineLimit(1)
@@ -888,28 +891,43 @@ struct ContentView: View {
                 .accessibilityLabel("Elapsed time and best acceleration result")
             }
 
-            Button {
-                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                    if model.accelerationState == .waitingForMovement || model.accelerationState == .timing {
-                        model.resetAccelerationTest()
-                    } else {
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
                         model.startAccelerationTest()
                     }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: model.accelerationPrimaryActionSymbol)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(model.accelerationPrimaryActionTitle)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(SpeedometerStyle.foreground)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 39)
+                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.2)).interactive(), in: .capsule)
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: accelerationButtonSymbol)
-                        .font(.system(size: 11, weight: .bold))
-                    Text(accelerationButtonTitle)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .buttonStyle(.plain)
+                .disabled(!model.isAccelerationPrimaryActionEnabled)
+                .accessibilityHint("Arms a GPS acceleration run when ready")
+
+                Button {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                        model.resetAccelerationTest()
+                    }
+                } label: {
+                    Text("Reset")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .frame(width: 68, height: 39)
+                        .glassEffect(.regular.interactive(), in: .capsule)
                 }
-                .foregroundStyle(SpeedometerStyle.foreground)
-                .frame(maxWidth: .infinity)
-                .frame(height: 39)
-                .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.2)).interactive(), in: .capsule)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Reset acceleration test")
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Arms a GPS acceleration run, or resets the current attempt")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
@@ -1028,45 +1046,8 @@ struct ContentView: View {
                 .glassEffect(.regular.tint(isSelected ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Acceleration test from zero to \(displayedAccelerationTarget(for: preset)) \(spokenUnit)")
-    }
-
-    private var accelerationStatusTitle: String {
-        switch model.accelerationState {
-        case .ready: "Ready to test"
-        case .waitingForMovement: "Waiting for movement"
-        case .timing: "Run in progress"
-        case .completed: model.isNewAccelerationBest ? "New personal best" : "Test complete"
-        }
-    }
-
-    private var accelerationStatusDetail: String {
-        switch model.accelerationState {
-        case .ready:
-            model.isSessionActive ? "Arms at a standstill" : "Arming starts GPS if needed"
-        case .waitingForMovement:
-            model.canBeginAccelerationRun ? "Accelerate from a standstill" : "Come to a stop before launch"
-        case .timing:
-            "Accelerate to the selected target"
-        case .completed:
-            "Target reached · best time saved"
-        }
-    }
-
-    private var accelerationButtonTitle: String {
-        switch model.accelerationState {
-        case .ready: "Start test"
-        case .waitingForMovement, .timing: "Reset test"
-        case .completed: "Retry test"
-        }
-    }
-
-    private var accelerationButtonSymbol: String {
-        switch model.accelerationState {
-        case .ready: "play.fill"
-        case .waitingForMovement, .timing: "stop.fill"
-        case .completed: "arrow.counterclockwise"
-        }
+        .accessibilityLabel("Acceleration target zero to \(displayedAccelerationTarget(for: preset)) \(spokenUnit)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func accelerationTimeText(_ time: TimeInterval) -> String {
