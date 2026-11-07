@@ -7,7 +7,6 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
     case midnight
     case ocean
     case graphite
-    case custom
 
     var id: String { rawValue }
 
@@ -16,7 +15,6 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: "Midnight"
         case .ocean: "Ocean"
         case .graphite: "Graphite"
-        case .custom: "Custom"
         }
     }
 
@@ -25,7 +23,6 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: Color(red: 0.025, green: 0.043, blue: 0.067)
         case .ocean: Color(red: 0.018, green: 0.070, blue: 0.078)
         case .graphite: Color(red: 0.055, green: 0.058, blue: 0.067)
-        case .custom: AppAppearance.shared.customBackgroundColor
         }
     }
 
@@ -34,7 +31,6 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: Color(red: 0.63, green: 0.70, blue: 0.77)
         case .ocean: Color(red: 0.66, green: 0.77, blue: 0.75)
         case .graphite: Color(red: 0.72, green: 0.73, blue: 0.76)
-        case .custom: secondaryTextColor(on: background)
         }
     }
 
@@ -43,7 +39,6 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: Color(red: 0.27, green: 0.79, blue: 0.98)
         case .ocean: Color(red: 0.24, green: 0.86, blue: 0.75)
         case .graphite: Color(red: 1.0, green: 0.69, blue: 0.28)
-        case .custom: AppAppearance.shared.customAccentColor
         }
     }
 
@@ -52,26 +47,20 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: Color(red: 0.34, green: 0.91, blue: 0.73)
         case .ocean: Color(red: 0.48, green: 0.92, blue: 0.70)
         case .graphite: Color(red: 0.52, green: 0.88, blue: 0.65)
-        case .custom: AppAppearance.shared.customPositiveColor
         }
     }
 
-    var foreground: Color {
-        self == .custom ? contrastingForeground(for: background) : .white
-    }
+    var foreground: Color { .white }
 
     var accentForeground: Color {
         switch self {
         case .midnight: .white
         case .ocean: Color(red: 0.015, green: 0.14, blue: 0.13)
         case .graphite: Color(red: 0.15, green: 0.10, blue: 0.025)
-        case .custom: contrastingForeground(for: accent)
         }
     }
 
-    var colorScheme: ColorScheme {
-        self == .custom && relativeLuminance(of: background) > 0.179 ? .light : .dark
-    }
+    var colorScheme: ColorScheme { .dark }
 
     func foreground(on color: Color) -> Color {
         contrastingForeground(for: color)
@@ -166,90 +155,21 @@ final class AppAppearance: ObservableObject {
         didSet { UserDefaults.standard.set(dialStyle.rawValue, forKey: Self.dialStorageKey) }
     }
 
-    @Published var customBackgroundColor: Color {
-        didSet { persistCustomColors() }
-    }
-
-    @Published var customAccentColor: Color {
-        didSet { persistCustomColors() }
-    }
-
-    @Published var customPositiveColor: Color {
-        didSet { persistCustomColors() }
-    }
-
     private static let themeStorageKey = "speedometer.appearance.theme"
     private static let dialStorageKey = "speedometer.appearance.dialStyle"
-    private static let customColorsStorageKey = "speedometer.appearance.customColors"
+    private static let legacyCustomColorsStorageKey = "speedometer.appearance.customColors"
 
     private init() {
-        theme = AppearanceTheme(rawValue: UserDefaults.standard.string(forKey: Self.themeStorageKey) ?? "") ?? .midnight
-        dialStyle = SpeedometerDialStyle(rawValue: UserDefaults.standard.string(forKey: Self.dialStorageKey) ?? "") ?? .classic
-
-        let savedPalette = UserDefaults.standard.data(forKey: Self.customColorsStorageKey)
-            .flatMap { try? JSONDecoder().decode(StoredCustomPalette.self, from: $0) }
-            ?? .defaults
-        customBackgroundColor = savedPalette.background.color
-        customAccentColor = savedPalette.accent.color
-        customPositiveColor = savedPalette.positive.color
-    }
-
-    func resetCustomColors() {
-        customBackgroundColor = AppearanceTheme.midnight.background
-        customAccentColor = AppearanceTheme.midnight.accent
-        customPositiveColor = AppearanceTheme.midnight.mint
-    }
-
-    private func persistCustomColors() {
-        let palette = StoredCustomPalette(
-            background: StoredThemeColor(color: customBackgroundColor),
-            accent: StoredThemeColor(color: customAccentColor),
-            positive: StoredThemeColor(color: customPositiveColor)
-        )
-        guard let data = try? JSONEncoder().encode(palette) else { return }
-        UserDefaults.standard.set(data, forKey: Self.customColorsStorageKey)
-    }
-}
-
-private struct StoredCustomPalette: Codable {
-    let background: StoredThemeColor
-    let accent: StoredThemeColor
-    let positive: StoredThemeColor
-
-    static let defaults = StoredCustomPalette(
-        background: StoredThemeColor(color: AppearanceTheme.midnight.background),
-        accent: StoredThemeColor(color: AppearanceTheme.midnight.accent),
-        positive: StoredThemeColor(color: AppearanceTheme.midnight.mint)
-    )
-}
-
-private struct StoredThemeColor: Codable {
-    let red: Double
-    let green: Double
-    let blue: Double
-    let opacity: Double
-
-    init(color: Color) {
-        let uiColor = UIColor(color)
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var opacity: CGFloat = 0
-        if uiColor.getRed(&red, green: &green, blue: &blue, alpha: &opacity) {
-            self.red = Double(red)
-            self.green = Double(green)
-            self.blue = Double(blue)
-            self.opacity = Double(opacity)
+        let defaults = UserDefaults.standard
+        let savedTheme = defaults.string(forKey: Self.themeStorageKey)
+        if savedTheme == "custom" {
+            defaults.set(AppearanceTheme.midnight.rawValue, forKey: Self.themeStorageKey)
+            theme = .midnight
         } else {
-            self.red = 0
-            self.green = 0
-            self.blue = 0
-            self.opacity = 1
+            theme = AppearanceTheme(rawValue: savedTheme ?? "") ?? .midnight
         }
-    }
-
-    var color: Color {
-        Color(.sRGB, red: red, green: green, blue: blue, opacity: opacity)
+        dialStyle = SpeedometerDialStyle(rawValue: defaults.string(forKey: Self.dialStorageKey) ?? "") ?? .classic
+        defaults.removeObject(forKey: Self.legacyCustomColorsStorageKey)
     }
 }
 
@@ -275,15 +195,4 @@ private func contrastingForeground(for color: Color) -> Color {
     let whiteContrast = 1.05 / (luminance + 0.05)
     let blackContrast = (luminance + 0.05) / 0.05
     return whiteContrast >= blackContrast ? .white : .black
-}
-
-private func secondaryTextColor(on background: Color) -> Color {
-    let luminance = relativeLuminance(of: background)
-    let targetLuminance = luminance < 0.179
-        ? min(1, 3 * (luminance + 0.05) - 0.05)
-        : max(0, (luminance + 0.05) / 3 - 0.05)
-    let srgb = targetLuminance <= 0.0031308
-        ? targetLuminance * 12.92
-        : 1.055 * pow(targetLuminance, 1 / 2.4) - 0.055
-    return Color(white: srgb)
 }
