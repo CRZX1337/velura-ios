@@ -7,6 +7,51 @@ struct DriveRoutePoint: Codable, Equatable {
     let timestamp: Date
 }
 
+/// A drive that has been started but not finished yet. It is written to disk
+/// continuously so a suspension or termination does not lose the trip.
+struct ActiveDriveSnapshot: Codable, Equatable {
+    let startedAt: Date
+    var elapsedSeconds: TimeInterval
+    var distanceKm: Double
+    var topSpeedKmh: Double
+    var routeCoordinates: [DriveRoutePoint]
+    var updatedAt: Date
+}
+
+final class ActiveDriveStore {
+    static let shared = ActiveDriveStore()
+
+    private let fileURL: URL
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    private init() {
+        let baseURL = (try? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )) ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let directory = baseURL.appendingPathComponent("Velura", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        fileURL = directory.appendingPathComponent("active-drive.json")
+    }
+
+    func load() -> ActiveDriveSnapshot? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? decoder.decode(ActiveDriveSnapshot.self, from: data)
+    }
+
+    func save(_ snapshot: ActiveDriveSnapshot) {
+        guard let data = try? encoder.encode(snapshot) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+    }
+
+    func clear() {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+}
+
 struct DriveRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let date: Date
