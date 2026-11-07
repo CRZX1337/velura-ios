@@ -31,6 +31,7 @@ struct ContentView: View {
     @AppStorage("speedometer.overspeed.thresholdKmh") private var overspeedThresholdKmh = 100.0
     @AppStorage("speedometer.firstLaunchSetup.completed") private var hasCompletedFirstLaunchSetup = false
     @State private var showingResetConfirmation = false
+    @State private var showsActiveDriveMap = false
     @State private var selectedTab: MainTab = .speedometer
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -62,6 +63,16 @@ struct ContentView: View {
             }
         }
         .animation(VeluraMotion.animation(VeluraMotion.tabChange, reduceMotion: reduceMotion), value: hasCompletedFirstLaunchSetup)
+        .onOpenURL { url in
+            guard url.scheme == "velura", url.host == "drive", url.path == "/active" else { return }
+            selectedTab = .speedometer
+            showsActiveDriveMap = model.hasUnfinishedSession
+        }
+        .fullScreenCover(isPresented: $showsActiveDriveMap) {
+            ActiveDriveView(model: model) {
+                showsActiveDriveMap = false
+            }
+        }
     }
 
     private func completeFirstLaunchSetup() {
@@ -134,6 +145,7 @@ struct ContentView: View {
         }
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isOverspeedWarningActive)
         .onAppear(perform: syncOverspeedWarning)
+        .onChange(of: usesMiles) { _, _ in model.refreshLiveActivity() }
         .onChange(of: overspeedWarningEnabled) { _, _ in syncOverspeedWarning() }
         .onChange(of: overspeedThresholdKmh) { _, _ in syncOverspeedWarning() }
         .alert("Location access is off", isPresented: $model.showLocationAlert) {

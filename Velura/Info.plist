@@ -16,6 +16,19 @@
 	<string>32</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Velura uses location for speed, distance, and route only during drives you explicitly start. Location updates may continue in the background while a drive is active, subject to iOS limits; force-quitting or system termination may stop tracking.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.velura.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>velura</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

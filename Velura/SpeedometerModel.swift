@@ -64,7 +64,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private var gpsFreshnessTimer: Timer?
     private var previousLocation: CLLocation?
     private var lastValidLocation: CLLocation?
-    private var routeCoordinates: [DriveRoutePoint] = []
+    @Published private(set) var routeCoordinates: [DriveRoutePoint] = []
     private var sessionStartedAt: Date?
     private var driveStartedAt: Date?
     private var driveID: UUID?
@@ -140,6 +140,48 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     func elapsedTime(at date: Date = .now) -> TimeInterval {
         elapsedSeconds + (sessionStartedAt.map { max(0, date.timeIntervalSince($0)) } ?? 0)
+    }
+
+    func refreshLiveActivity() {
+        updateDriveLiveActivity()
+    }
+
+    private func liveActivityState(at date: Date = .now, ended: Bool = false) -> VeluraDriveActivityAttributes.ContentState {
+        let gpsFreshness: VeluraDriveActivityAttributes.ContentState.GPSFreshness
+        if authorizationStatus == .denied || authorizationStatus == .restricted || locationUpdateFailed {
+            gpsFreshness = .unavailable
+        } else if hasCurrentGPSFix {
+            gpsFreshness = .good
+        } else if lastValidGPSFixAt != nil {
+            gpsFreshness = .stale
+        } else if hasUnfinishedSession && !isSessionActive {
+            gpsFreshness = .unavailable
+        } else {
+            gpsFreshness = .searching
+        }
+
+        return VeluraDriveActivityAttributes.ContentState(
+            speedKmh: speedKmh,
+            elapsedSeconds: elapsedTime(at: date),
+            distanceKm: distanceKm,
+            topSpeedKmh: topSpeedKmh,
+            gpsFreshness: gpsFreshness,
+            updatedAt: date,
+            isRunning: isSessionActive && !ended,
+            isEnded: ended,
+            usesMiles: defaults.bool(forKey: "speedometer.usesMiles")
+        )
+    }
+
+    private func updateDriveLiveActivity(at date: Date = .now) {
+        guard hasUnfinishedSession, let driveID, let driveStartedAt else { return }
+        let state = liveActivityState(at: date)
+        DriveLiveActivityController.shared.startOrUpdate(driveID: driveID, startedAt: driveStartedAt, state: state)
+    }
+
+    private func endDriveLiveActivity(at date: Date) {
+        guard let driveID, hasUnfinishedSession else { return }
+        DriveLiveActivityController.shared.end(driveID: driveID, state: liveActivityState(at: date, ended: true))
     }
 
     var driveRecoveryMessage: String {
@@ -368,6 +410,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         speedKmh = 0
         updateOverspeedWarning(triggerHaptic: false)
         previousLocation = nil
+        updateDriveLiveActivity()
         if accelerationState == .waitingForMovement || accelerationState == .timing {
             resetAccelerationTest()
         }
@@ -401,10 +444,14 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
                 interruptionGaps: interruptionGaps
             ))
         }
+        endDriveLiveActivity(at: finishedAt)
         resetSession()
     }
 
     func resetSession() {
+        if hasUnfinishedSession {
+            endDriveLiveActivity(at: .now)
+        }
         if isSessionActive {
             configureBackgroundLocationUpdates(active: false)
             locationManager.stopUpdatingLocation()
@@ -465,6 +512,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
                 locationManager.stopUpdatingLocation()
                 isAwaitingDriveRecoveryDecision = hasUnfinishedSession
                 persistActiveDrive(force: true)
+                updateDriveLiveActivity(at: interruptionAt)
                 if hasUnfinishedSession {
                     showLocationAlert = true
                 }
@@ -538,6 +586,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
         if receivedValidLocation {
             persistActiveDrive(force: true)
+            updateDriveLiveActivity(at: receivedAt)
         }
     }
 
@@ -552,6 +601,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? Date()
             persistActiveDrive(force: true)
         }
+        updateDriveLiveActivity()
         updateOverspeedWarning(triggerHaptic: false)
     }
 
@@ -592,6 +642,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         previousLocation = nil
         interruptAccelerationTestForGPSIssue()
         persistActiveDrive(force: true)
+        updateDriveLiveActivity()
         updateOverspeedWarning(triggerHaptic: false)
     }
 
@@ -638,6 +689,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         configureBackgroundLocationUpdates(active: true)
         locationManager.startUpdatingLocation()
         persistActiveDrive(force: true)
+        updateDriveLiveActivity(at: sessionResumedAt)
     }
 
     private func completePendingGap(at end: Date) {

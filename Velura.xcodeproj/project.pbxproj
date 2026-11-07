@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		045523F6CA7B82361A30A076 /* VeluraLiveActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 980A17407DD5946C42144DC2 /* VeluraLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		390FDE33A5F5AD9DF25ECDBA /* VeluraLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BA2CC88A2BF29AE52469B18 /* VeluraLiveActivity.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		0A0000000000000000000021 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,12 +26,38 @@
 			remoteGlobalIDString = 0A0000000000000000000006;
 			remoteInfo = Velura;
 		};
+		54AD6C603B356967F202EFCB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0A0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B49DA81957ABB290383DB455;
+			remoteInfo = VeluraLiveActivity;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E2360D0CF5197BB7B649BE45 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				045523F6CA7B82361A30A076 /* VeluraLiveActivity.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0A0000000000000000000003 /* Velura.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Velura.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A0000000000000000000023 /* VeluraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VeluraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A0000000000000000000033 /* VeluraUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VeluraUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1F95CBC66AE278322462EE1B /* Velura.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = Velura.entitlements; path = Velura/Velura.entitlements; sourceTree = "<group>"; };
+		5A8D2708550B3F7246605036 /* VeluraLiveActivity.entitlements */ = {isa = PBXFileReference; explicitFileType = text.plist.entitlements; lastKnownFileType = text.plist.entitlements; name = VeluraLiveActivity.entitlements; path = VeluraLiveActivity.entitlements; sourceTree = "<group>"; };
+		8BA2CC88A2BF29AE52469B18 /* VeluraLiveActivity.swift */ = {isa = PBXFileReference; explicitFileType = sourcecode.swift; lastKnownFileType = sourcecode.swift; name = VeluraLiveActivity.swift; path = VeluraLiveActivity.swift; sourceTree = "<group>"; };
+		980A17407DD5946C42144DC2 /* VeluraLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; name = VeluraLiveActivity.appex; path = VeluraLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D5DB719771967AB51C30579B /* Info.plist */ = {isa = PBXFileReference; explicitFileType = text.plist; lastKnownFileType = text.plist.xml; name = Info.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -82,6 +113,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		507575B6DE0D24DA7BF89B6F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -92,6 +130,8 @@
 				0A0000000000000000000025 /* VeluraTests */,
 				0A0000000000000000000035 /* VeluraUITests */,
 				0A0000000000000000000004 /* Products */,
+				46C9EFBC5B9BBC08463B18D7 /* VeluraLiveActivity */,
+				1F95CBC66AE278322462EE1B /* Velura.entitlements */,
 			);
 			sourceTree = "<group>";
 		};
@@ -101,8 +141,20 @@
 				0A0000000000000000000003 /* Velura.app */,
 				0A0000000000000000000023 /* VeluraTests.xctest */,
 				0A0000000000000000000033 /* VeluraUITests.xctest */,
+				980A17407DD5946C42144DC2 /* VeluraLiveActivity.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		46C9EFBC5B9BBC08463B18D7 /* VeluraLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				8BA2CC88A2BF29AE52469B18 /* VeluraLiveActivity.swift */,
+				D5DB719771967AB51C30579B /* Info.plist */,
+				5A8D2708550B3F7246605036 /* VeluraLiveActivity.entitlements */,
+			);
+			name = VeluraLiveActivity;
+			path = VeluraLiveActivity;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -115,10 +167,12 @@
 				0A0000000000000000000007 /* Sources */,
 				0A0000000000000000000008 /* Frameworks */,
 				0A0000000000000000000009 /* Resources */,
+				E2360D0CF5197BB7B649BE45 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				343F5B52C329B89369772EBA /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				0A0000000000000000000005 /* Velura */,
@@ -176,6 +230,25 @@
 			productReference = 0A0000000000000000000033 /* VeluraUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		B49DA81957ABB290383DB455 /* VeluraLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 92457B9BDC734BCEBDA1E8A3 /* Build configuration list for PBXNativeTarget "VeluraLiveActivity" */;
+			buildPhases = (
+				86E3E4C6C250475D3DC321B7 /* Sources */,
+				507575B6DE0D24DA7BF89B6F /* Frameworks */,
+				CA7D88549E0C249F372A5F3F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VeluraLiveActivity;
+			packageProductDependencies = (
+			);
+			productName = VeluraLiveActivity;
+			productReference = 980A17407DD5946C42144DC2 /* VeluraLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -221,6 +294,7 @@
 				0A0000000000000000000006 /* Velura */,
 				0A0000000000000000000026 /* VeluraTests */,
 				0A0000000000000000000036 /* VeluraUITests */,
+				B49DA81957ABB290383DB455 /* VeluraLiveActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -241,6 +315,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		0A0000000000000000000039 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CA7D88549E0C249F372A5F3F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -271,6 +352,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		86E3E4C6C250475D3DC321B7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				390FDE33A5F5AD9DF25ECDBA /* VeluraLiveActivity.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -283,6 +372,12 @@
 			isa = PBXTargetDependency;
 			target = 0A0000000000000000000006 /* Velura */;
 			targetProxy = 0A0000000000000000000031 /* PBXContainerItemProxy */;
+		};
+		343F5B52C329B89369772EBA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = VeluraLiveActivity;
+			target = B49DA81957ABB290383DB455 /* VeluraLiveActivity */;
+			targetProxy = 54AD6C603B356967F202EFCB /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -411,6 +506,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Velura/Velura.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -444,6 +540,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Velura/Velura.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -542,6 +639,66 @@
 			};
 			name = Release;
 		};
+		3704F2C2B47580F363DB6C5B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VeluraLiveActivity/VeluraLiveActivity.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_LANGUAGE = en;
+				EXECUTABLE_NAME = "$(PRODUCT_NAME)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VeluraLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.velura.app.veluraliveactivity;
+				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
+				PRODUCT_MODULE_NAME = VeluraLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A862B642FFDF554D1762C574 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VeluraLiveActivity/VeluraLiveActivity.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_LANGUAGE = en;
+				EXECUTABLE_NAME = "$(PRODUCT_NAME)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VeluraLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.velura.app.veluraliveactivity;
+				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
+				PRODUCT_MODULE_NAME = VeluraLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -577,6 +734,15 @@
 			buildConfigurations = (
 				0A000000000000000000003F /* Debug */,
 				0A0000000000000000000040 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		92457B9BDC734BCEBDA1E8A3 /* Build configuration list for PBXNativeTarget "VeluraLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3704F2C2B47580F363DB6C5B /* Debug */,
+				A862B642FFDF554D1762C574 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
