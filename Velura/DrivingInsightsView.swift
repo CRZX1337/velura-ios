@@ -22,6 +22,7 @@ private struct InsightBucket: Identifiable {
 
 struct DrivingInsightsView: View {
     @ObservedObject private var appearance = AppAppearance.shared
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store = DriveHistoryStore.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
@@ -167,16 +168,25 @@ struct DrivingInsightsView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
         .preferredColorScheme(appearance.theme.colorScheme)
         .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: selectedPeriod)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: store.drives.count)
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(SpeedometerStyle.foreground)
+                    .frame(width: 36, height: 36)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to drives")
+
             Text("Driving insights")
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -184,7 +194,7 @@ struct DrivingInsightsView: View {
 
             Spacer(minLength: 2)
             periodPicker
-                .frame(width: 160, height: 44)
+                .frame(width: 136, height: 44)
         }
         .frame(height: 48)
     }

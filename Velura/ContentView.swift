@@ -36,7 +36,12 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var unit: String { usesMiles ? "mph" : "km/h" }
+    private var spokenUnit: String { usesMiles ? "miles per hour" : "kilometres per hour" }
+    private var unitConversion: Double { usesMiles ? 0.621371 : 1 }
     private var displayedSpeed: Double { usesMiles ? model.speedKmh * 0.621371 : model.speedKmh }
+    private var displayedAccelerationTarget: Int { Int((model.accelerationTargetKmh * unitConversion).rounded()) }
+    private func displayedSpeed(for speedKmh: Double) -> Double { speedKmh * unitConversion }
+    private func displayedAccelerationTarget(for targetKmh: Int) -> Int { Int((Double(targetKmh) * unitConversion).rounded()) }
     private var rangeMaximum: Double { Double(selectedRange == -1 ? customRange : selectedRange) }
     private var displayedWarningThreshold: Double { usesMiles ? overspeedThresholdKmh * 0.621371 : overspeedThresholdKmh }
     private var gaugePreviewProgress: Double {
@@ -76,18 +81,20 @@ struct ContentView: View {
                 .tag(MainTab.acceleration)
 
             NavigationStack {
-                DriveHistoryView {
-                    selectedTab = .speedometer
-                }
+                DriveHistoryView()
             }
             .tabItem { Label("Drives", systemImage: "clock.arrow.circlepath") }
             .tag(MainTab.history)
 
-            settingsScreen
-                .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
-                .tag(MainTab.settings)
+            NavigationStack {
+                settingsScreen
+            }
+            .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
+            .tag(MainTab.settings)
         }
         .tint(SpeedometerStyle.accent)
+        .toolbar(.visible, for: .tabBar)
+        .tabBarMinimizeBehavior(.never)
         .animation(VeluraMotion.animation(VeluraMotion.tabChange, reduceMotion: reduceMotion), value: selectedTab)
         .preferredColorScheme(appearance.theme.colorScheme)
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -175,9 +182,7 @@ struct ContentView: View {
     }
 
     private var accelerationScreen: some View {
-        AccelerationTestView(model: model) {
-            selectedTab = .speedometer
-        }
+        AccelerationTestView(model: model)
     }
 
     private var settingsScreen: some View {
@@ -371,7 +376,7 @@ struct ContentView: View {
             }
 
             HStack(alignment: .center) {
-                Text("72 km/h")
+                Text("\(Int(displayedSpeed(for: 72).rounded())) \(unit)")
                     .font(.system(size: 25, weight: .light, design: .rounded).monospacedDigit())
                     .foregroundStyle(SpeedometerStyle.foreground)
                 Spacer()
@@ -807,7 +812,7 @@ struct ContentView: View {
                     .tracking(1.2)
                     .foregroundStyle(SpeedometerStyle.secondary)
                 Spacer()
-                Text("0–\(Int(model.accelerationTargetKmh)) km/h")
+                Text("0–\(displayedAccelerationTarget) \(unit)")
                     .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(SpeedometerStyle.accent)
                     .contentTransition(.numericText())
@@ -835,15 +840,16 @@ struct ContentView: View {
             if model.accelerationPreset == -1 {
                 VStack(spacing: 2) {
                     Slider(value: Binding(
-                        get: { Double(model.customAccelerationTargetKmh) },
-                        set: { model.selectCustomAccelerationTarget($0) }
-                    ), in: 20...240, step: 5)
+                        get: { Double(model.customAccelerationTargetKmh) * unitConversion },
+                        set: { model.selectCustomAccelerationTarget($0 / unitConversion) }
+                    ), in: (20 * unitConversion)...(240 * unitConversion), step: 5 * unitConversion)
                     .tint(SpeedometerStyle.accent)
-                    .accessibilityLabel("Custom acceleration target in kilometres per hour")
+                    .accessibilityLabel("Custom acceleration target in \(spokenUnit)")
+                    .accessibilityValue("\(Int((Double(model.customAccelerationTargetKmh) * unitConversion).rounded())) \(spokenUnit)")
                     HStack {
-                        Text("20 km/h")
+                        Text("\(Int((20 * unitConversion).rounded())) \(unit)")
                         Spacer()
-                        Text("240 km/h")
+                        Text("\(Int((240 * unitConversion).rounded())) \(unit)")
                     }
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
@@ -948,7 +954,7 @@ struct ContentView: View {
                 ForEach(model.accelerationAttemptGroups) { group in
                     VStack(alignment: .leading, spacing: 9) {
                         HStack(alignment: .center) {
-                            Text("0–\(group.targetKmh) km/h")
+                            Text("0–\(displayedAccelerationTarget(for: group.targetKmh)) \(unit)")
                                 .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                                 .foregroundStyle(SpeedometerStyle.foreground)
 
@@ -971,7 +977,7 @@ struct ContentView: View {
                                     Text(attempt.date.formatted(date: .abbreviated, time: .shortened))
                                         .font(.system(size: 11, weight: .medium, design: .rounded))
                                         .foregroundStyle(SpeedometerStyle.foreground.opacity(0.84))
-                                    Text("\(accelerationTimeText(attempt.duration)) · 0–\(attempt.targetKmh) km/h")
+                                    Text("\(accelerationTimeText(attempt.duration)) · 0–\(displayedAccelerationTarget(for: attempt.targetKmh)) \(unit)")
                                         .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
                                         .foregroundStyle(SpeedometerStyle.secondary)
                                 }
@@ -988,7 +994,7 @@ struct ContentView: View {
                                         .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.12)).interactive(), in: .circle)
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("Delete \(attempt.targetKmh) km/h attempt")
+                                .accessibilityLabel("Delete zero to \(displayedAccelerationTarget(for: attempt.targetKmh)) \(spokenUnit) attempt")
                             }
                             .padding(.vertical, 2)
                         }
@@ -1014,7 +1020,7 @@ struct ContentView: View {
                 model.selectAccelerationPreset(preset)
             }
         } label: {
-            Text("0–\(preset)")
+            Text("0–\(displayedAccelerationTarget(for: preset)) \(unit)")
                 .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
                 .frame(maxWidth: .infinity)
@@ -1022,7 +1028,7 @@ struct ContentView: View {
                 .glassEffect(.regular.tint(isSelected ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Acceleration test from zero to \(preset) kilometres per hour")
+        .accessibilityLabel("Acceleration test from zero to \(displayedAccelerationTarget(for: preset)) \(spokenUnit)")
     }
 
     private var accelerationStatusTitle: String {

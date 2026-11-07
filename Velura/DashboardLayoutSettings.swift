@@ -144,7 +144,6 @@ struct DashboardLayoutSettingsSection: View {
     @ObservedObject var layout: AppDashboardLayout
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showingEditor = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
@@ -168,8 +167,8 @@ struct DashboardLayoutSettingsSection: View {
                 }
             }
 
-            Button {
-                showingEditor = true
+            NavigationLink {
+                DashboardLayoutEditor(layout: layout)
             } label: {
                 HStack(spacing: 9) {
                     Image(systemName: "slider.horizontal.3")
@@ -198,14 +197,6 @@ struct DashboardLayoutSettingsSection: View {
         .padding(15)
         .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
-        .sheet(isPresented: $showingEditor) {
-            NavigationStack {
-                DashboardLayoutEditor(layout: layout)
-            }
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(SpeedometerStyle.background)
-        }
     }
 
     private func presetButton(_ preset: DashboardLayoutPreset) -> some View {
@@ -242,7 +233,6 @@ struct DashboardLayoutSettingsSection: View {
 private struct DashboardLayoutEditor: View {
     @ObservedObject var layout: AppDashboardLayout
     @ObservedObject private var appearance = AppAppearance.shared
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -269,10 +259,6 @@ private struct DashboardLayoutEditor: View {
         .navigationTitle("Dashboard layout")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Done") { dismiss() }
-                    .foregroundStyle(SpeedometerStyle.accent)
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 EditButton()
                     .tint(SpeedometerStyle.accent)

@@ -98,6 +98,7 @@ struct DriveRouteView: View {
             .padding(.bottom, 12)
         }
         .preferredColorScheme(appearance.theme.colorScheme)
+        .toolbar(.hidden, for: .navigationBar)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: routeCoordinates.count >= 2)
         .confirmationDialog("Delete this route?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete route", role: .destructive) {

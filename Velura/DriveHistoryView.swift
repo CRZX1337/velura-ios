@@ -22,16 +22,13 @@ struct DriveHistoryView: View {
     @StateObject private var store = DriveHistoryStore.shared
     @State private var filter: HistoryFilter = .all
     @State private var searchText = ""
-    @State private var selectedDrive: DriveRecord?
     @State private var showingClearConfirmation = false
     @State private var isSearchPresented = false
     @State private var showingInsights = false
+    @AppStorage("speedometer.usesMiles") private var usesMiles = false
 
-    private let onBack: () -> Void
-
-    init(onBack: @escaping () -> Void = {}) {
-        self.onBack = onBack
-    }
+    private var distanceUnit: String { usesMiles ? "mi" : "km" }
+    private var conversion: Double { usesMiles ? 0.621371 : 1 }
 
     private var monthDrives: [DriveRecord] {
         guard let interval = Calendar.current.dateInterval(of: .month, for: .now) else { return [] }
@@ -100,9 +97,12 @@ struct DriveHistoryView: View {
         let values = dateValues + [
             String(format: "%.1f km", drive.distanceKm),
             String(format: "%.2f km", drive.distanceKm),
+            String(format: "%.1f mi", drive.distanceKm * 0.621371),
+            String(format: "%.2f mi", drive.distanceKm * 0.621371),
             rowDuration(drive.duration),
             detailedDuration(drive.duration),
-            "\(Int(drive.topSpeedKmh.rounded())) km/h"
+            "\(Int(drive.topSpeedKmh.rounded())) km/h",
+            "\(Int((drive.topSpeedKmh * 0.621371).rounded())) mph"
         ]
         return values
             .map { $0.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) }
@@ -146,9 +146,14 @@ struct DriveHistoryView: View {
                                             .padding(.top, 3)
 
                                         ForEach(group.drives) { drive in
-                                            DriveHistoryRow(drive: drive) {
-                                                selectedDrive = drive
-                                            }
+                                            DriveHistoryRow(
+                                                drive: drive,
+                                                destination: DriveDetailView(
+                                                    drive: drive,
+                                                    onDeleteRoute: { store.deleteRoute(for: drive.id) },
+                                                    onDelete: { store.delete(drive.id) }
+                                                )
+                                            )
                                             .transition(VeluraMotion.transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity), reduceMotion: reduceMotion))
                                             .contextMenu {
                                                 Button(role: .destructive) {
@@ -174,21 +179,9 @@ struct DriveHistoryView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
         .preferredColorScheme(appearance.theme.colorScheme)
         .navigationDestination(isPresented: $showingInsights) {
             DrivingInsightsView()
-        }
-        .sheet(item: $selectedDrive) { drive in
-            DriveDetailView(drive: drive, onDeleteRoute: {
-                store.deleteRoute(for: drive.id)
-            }) {
-                store.delete(drive.id)
-                selectedDrive = nil
-            }
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(SpeedometerStyle.background)
         }
         .confirmationDialog("Clear all drive history?", isPresented: $showingClearConfirmation, titleVisibility: .visible) {
             Button("Clear all history", role: .destructive) {
@@ -208,17 +201,7 @@ struct DriveHistoryView: View {
                 .lineLimit(1)
 
             HStack {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(SpeedometerStyle.foreground)
-                        .frame(width: 42, height: 42)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Back to speedometer")
-
-                Spacer()
+                Spacer(minLength: 0)
 
                 Menu {
                     Button {
@@ -368,7 +351,7 @@ struct DriveHistoryView: View {
             HStack(spacing: 0) {
                 summaryMetric(value: "\(monthDrives.count)", caption: "drives")
                 summaryDivider
-                summaryMetric(value: "\(String(format: "%.0f", distance)) km", caption: "distance")
+                summaryMetric(value: "\(String(format: "%.0f", distance * conversion)) \(distanceUnit)", caption: "distance")
                 summaryDivider
                 summaryMetric(value: compactDuration(duration), caption: "total time")
             }
@@ -470,11 +453,17 @@ struct DriveHistoryView: View {
 
 private struct DriveHistoryRow: View {
     @ObservedObject private var appearance = AppAppearance.shared
+    @AppStorage("speedometer.usesMiles") private var usesMiles = false
     let drive: DriveRecord
-    let action: () -> Void
+    let destination: DriveDetailView
+
+    private var displayedDistance: Double { usesMiles ? drive.distanceKm * 0.621371 : drive.distanceKm }
+    private var displayedTopSpeed: Double { usesMiles ? drive.topSpeedKmh * 0.621371 : drive.topSpeedKmh }
+    private var distanceUnit: String { usesMiles ? "mi" : "km" }
+    private var speedUnit: String { usesMiles ? "mph" : "km/h" }
 
     var body: some View {
-        Button(action: action) {
+        NavigationLink(destination: destination) {
             HStack(spacing: 13) {
                 DriveRouteGlyph()
                     .frame(width: 68, height: 56)
@@ -488,7 +477,7 @@ private struct DriveHistoryRow: View {
                     Text(drive.date.formatted(date: .omitted, time: .shortened))
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
-                    Text("\(String(format: "%.1f", drive.distanceKm)) km · \(rowDuration(drive.duration))")
+                    Text("\(String(format: "%.1f", displayedDistance)) \(distanceUnit) · \(rowDuration(drive.duration))")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .lineLimit(1)
@@ -501,7 +490,7 @@ private struct DriveHistoryRow: View {
                     Text("Top")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
-                    Text("\(Int(drive.topSpeedKmh.rounded())) km/h")
+                    Text("\(Int(displayedTopSpeed.rounded())) \(speedUnit)")
                         .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(SpeedometerStyle.foreground)
                         .lineLimit(1)
@@ -524,7 +513,7 @@ private struct DriveHistoryRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Drive at \(drive.date.formatted(date: .omitted, time: .shortened)), \(String(format: "%.1f", drive.distanceKm)) kilometres, top speed \(Int(drive.topSpeedKmh.rounded())) kilometres per hour")
+        .accessibilityLabel("Drive at \(drive.date.formatted(date: .omitted, time: .shortened)), \(String(format: "%.1f", displayedDistance)) \(usesMiles ? "miles" : "kilometres"), top speed \(Int(displayedTopSpeed.rounded())) \(usesMiles ? "miles per hour" : "kilometres per hour")")
         .accessibilityHint("Opens drive details. Touch and hold to delete.")
     }
 }
@@ -569,13 +558,13 @@ private struct DriveRouteGlyph: View {
 
 private struct DriveDetailView: View {
     @ObservedObject private var appearance = AppAppearance.shared
+    @AppStorage("speedometer.usesMiles") private var usesMiles = false
     let drive: DriveRecord
     let onDeleteRoute: () -> Void
     let onDelete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var showingDeleteConfirmation = false
-    @State private var showingRoute = false
     @State private var routeCoordinates: [DriveRoutePoint]
 
     init(drive: DriveRecord, onDeleteRoute: @escaping () -> Void, onDelete: @escaping () -> Void) {
@@ -584,6 +573,11 @@ private struct DriveDetailView: View {
         self.onDelete = onDelete
         _routeCoordinates = State(initialValue: drive.routeCoordinates)
     }
+
+    private var displayedDistance: Double { usesMiles ? drive.distanceKm * 0.621371 : drive.distanceKm }
+    private var displayedTopSpeed: Double { usesMiles ? drive.topSpeedKmh * 0.621371 : drive.topSpeedKmh }
+    private var distanceUnit: String { usesMiles ? "mi" : "km" }
+    private var speedUnit: String { usesMiles ? "mph" : "km/h" }
 
     private var driveWithCurrentRoute: DriveRecord {
         var updatedDrive = drive
@@ -594,19 +588,19 @@ private struct DriveDetailView: View {
     var body: some View {
         VStack(spacing: 22) {
             HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                        .frame(width: 42, height: 42)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back to drives")
                 Text("Drive details")
                     .font(.system(size: 19, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.foreground)
                 Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(SpeedometerStyle.secondary)
-                        .frame(width: 32, height: 32)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close drive details")
             }
 
             VStack(spacing: 7) {
@@ -621,18 +615,21 @@ private struct DriveDetailView: View {
             .frame(maxWidth: .infinity)
 
             HStack(spacing: 0) {
-                detailMetric(title: "DISTANCE", value: String(format: "%.2f km", drive.distanceKm))
+                detailMetric(title: "DISTANCE", value: String(format: "%.2f %@", displayedDistance, distanceUnit))
                 detailDivider
                 detailMetric(title: "DURATION", value: detailedDuration(drive.duration))
                 detailDivider
-                detailMetric(title: "TOP SPEED", value: "\(Int(drive.topSpeedKmh.rounded())) km/h")
+                detailMetric(title: "TOP SPEED", value: "\(Int(displayedTopSpeed.rounded())) \(speedUnit)")
             }
             .padding(.vertical, 17)
             .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 22))
 
-            Button {
-                showingRoute = true
+            NavigationLink {
+                DriveRouteView(drive: driveWithCurrentRoute) {
+                    onDeleteRoute()
+                    routeCoordinates.removeAll()
+                }
             } label: {
                 Label("View route", systemImage: "map.fill")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -656,7 +653,10 @@ private struct DriveDetailView: View {
             }
             .buttonStyle(.plain)
             .confirmationDialog("Delete this drive?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
-                Button("Delete drive", role: .destructive, action: onDelete)
+                Button("Delete drive", role: .destructive) {
+                    onDelete()
+                    dismiss()
+                }
                 Button("Cancel", role: .cancel) { }
             } message: {
                 Text("This drive will be permanently removed from your history.")
@@ -664,13 +664,8 @@ private struct DriveDetailView: View {
         }
         .padding(22)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .fullScreenCover(isPresented: $showingRoute) {
-            DriveRouteView(drive: driveWithCurrentRoute) {
-                onDeleteRoute()
-                routeCoordinates.removeAll()
-            }
-            .preferredColorScheme(appearance.theme.colorScheme)
-        }
+        .toolbar(.hidden, for: .navigationBar)
+        .preferredColorScheme(appearance.theme.colorScheme)
     }
 
     private var detailDivider: some View {
