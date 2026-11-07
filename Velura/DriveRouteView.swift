@@ -8,6 +8,7 @@ struct DriveRouteView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject private var appearance = AppAppearance.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var routeCoordinates: [DriveRoutePoint]
@@ -65,40 +66,57 @@ struct DriveRouteView: View {
     }
 
     var body: some View {
-        ZStack {
-            SpeedometerStyle.background.ignoresSafeArea()
-
-            if routeCoordinates.count >= 2 {
-                routeMap
-                    .transition(VeluraMotion.transition(.opacity, reduceMotion: reduceMotion))
-            } else {
-                emptyMapState
-                    .transition(VeluraMotion.transition(.opacity, reduceMotion: reduceMotion))
-            }
-
-            VStack(spacing: 0) {
-                header
+        GeometryReader { geometry in
+            ZStack {
+                SpeedometerStyle.background.ignoresSafeArea()
 
                 if routeCoordinates.count >= 2 {
-                    Text(dateChipText)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .tracking(1.1)
-                        .foregroundStyle(SpeedometerStyle.foreground.opacity(0.88))
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .glassEffect(.regular, in: .capsule)
-                        .padding(.top, 16)
+                    routeMap
+                        .transition(VeluraMotion.transition(.opacity, reduceMotion: reduceMotion))
+                } else {
+                    emptyMapState
+                        .transition(VeluraMotion.transition(.opacity, reduceMotion: reduceMotion))
                 }
 
-                Spacer(minLength: 14)
-                summaryCard
+                VStack(spacing: 0) {
+                    header
+
+                    if routeCoordinates.count >= 2 {
+                        Text(dateChipText)
+                            .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                            .tracking(1.1)
+                            .foregroundStyle(SpeedometerStyle.foreground.opacity(0.88))
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .glassEffect(.regular, in: .capsule)
+                            .padding(.top, 8)
+                    }
+
+                    Spacer(minLength: geometry.size.height > 600 ? 14 : 4)
+
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize || geometry.size.height < 500 {
+                            ScrollView(showsIndicators: false) {
+                                summaryCard
+                            }
+                            .frame(maxHeight: min(geometry.size.height * 0.55, max(100, geometry.size.height - 120)))
+                        } else {
+                            summaryCard
+                        }
+                    }
+                }
+                .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 14 : 22)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
+                .frame(maxWidth: 520)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 10)
-            .padding(.bottom, 12)
         }
         .preferredColorScheme(appearance.theme.colorScheme)
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .tabBar)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: routeCoordinates.count >= 2)
         .confirmationDialog("Delete this route?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete route", role: .destructive) {
@@ -158,13 +176,13 @@ struct DriveRouteView: View {
 
             VStack(spacing: 11) {
                 Image(systemName: "map")
-                    .font(.system(size: 28, weight: .light))
+                    .modifier(AdaptiveFont(size: 28, weight: .light))
                     .foregroundStyle(SpeedometerStyle.accent)
                 Text("No route recorded")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.foreground)
                 Text("A route will appear here when GPS locations were recorded during this drive.")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 270)
@@ -176,52 +194,73 @@ struct DriveRouteView: View {
         .ignoresSafeArea()
     }
 
+    @ViewBuilder
     private var header: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    backButton
+                    Spacer()
+                    headerShareButton
+                }
+                Text("Drive route")
+                    .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.foreground)
-                    .frame(width: 42, height: 42)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            HStack {
+                backButton
+                Spacer()
+                Text("Drive route")
+                    .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.foreground)
+                    .lineLimit(1)
+                Spacer()
+                headerShareButton
+            }
+        }
+    }
+
+    private var backButton: some View {
+        Button { dismiss() } label: {
+            Image(systemName: "chevron.left")
+                .modifier(AdaptiveFont(size: 16, weight: .semibold))
+                .foregroundStyle(SpeedometerStyle.foreground)
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back to drive details")
+    }
+
+    @ViewBuilder
+    private var headerShareButton: some View {
+        if routeCoordinates.count >= 2 {
+            Button {
+                Task { await prepareShare() }
+            } label: {
+                Group {
+                    if isPreparingShare {
+                        ProgressView()
+                            .tint(SpeedometerStyle.foreground)
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                            .modifier(AdaptiveFont(size: 16, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: .circle)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Back to drive details")
-
-            Spacer()
-
-            Text("Drive route")
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(SpeedometerStyle.foreground)
-
-            Spacer()
-
-            if routeCoordinates.count >= 2 {
-                Button {
-                    Task { await prepareShare() }
-                } label: {
-                    Group {
-                        if isPreparingShare {
-                            ProgressView()
-                                .tint(SpeedometerStyle.foreground)
-                        } else {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(SpeedometerStyle.foreground)
-                        }
-                    }
-                    .frame(width: 42, height: 42)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(.plain)
-                .disabled(isPreparingShare)
-                .accessibilityLabel("Share drive route")
-                .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isPreparingShare)
-            } else {
-                Color.clear
-                    .frame(width: 42, height: 42)
-                    .accessibilityHidden(true)
-            }
+            .disabled(isPreparingShare)
+            .accessibilityLabel("Share drive route")
+            .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isPreparingShare)
+        } else {
+            Color.clear
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
         }
     }
 
@@ -300,11 +339,14 @@ struct DriveRouteView: View {
         VStack(alignment: .leading, spacing: 15) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(String(format: "%.1f", displayedDistance)) \(distanceUnit)")
-                    .font(.system(size: 38, weight: .semibold, design: .rounded).monospacedDigit())
+                    .modifier(AdaptiveFont(size: 38, weight: .semibold, design: .rounded).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     .foregroundStyle(SpeedometerStyle.foreground)
                     .contentTransition(.numericText())
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("DISTANCE")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.3)
                     .foregroundStyle(SpeedometerStyle.secondary)
             }
@@ -313,12 +355,24 @@ struct DriveRouteView: View {
                 .fill(SpeedometerStyle.foreground.opacity(0.11))
                 .frame(height: 1)
 
-            HStack(spacing: 0) {
-                summaryMetric(title: "TOP SPEED", value: "\(Int(displayedTopSpeed.rounded())) \(speedUnit)")
-                Rectangle()
-                    .fill(SpeedometerStyle.foreground.opacity(0.12))
-                    .frame(width: 1, height: 38)
-                summaryMetric(title: "DURATION", value: routeDuration(drive.duration))
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 12) {
+                        summaryMetric(title: "TOP SPEED", value: "\(Int(displayedTopSpeed.rounded())) \(speedUnit)")
+                        Rectangle()
+                            .fill(SpeedometerStyle.foreground.opacity(0.12))
+                            .frame(height: 1)
+                        summaryMetric(title: "DURATION", value: routeDuration(drive.duration))
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        summaryMetric(title: "TOP SPEED", value: "\(Int(displayedTopSpeed.rounded())) \(speedUnit)")
+                        Rectangle()
+                            .fill(SpeedometerStyle.foreground.opacity(0.12))
+                            .frame(width: 1, height: 38)
+                        summaryMetric(title: "DURATION", value: routeDuration(drive.duration))
+                    }
+                }
             }
 
             if routeCoordinates.count >= 2 {
@@ -326,10 +380,11 @@ struct DriveRouteView: View {
                     showingDeleteConfirmation = true
                 } label: {
                     Label("Delete route", systemImage: "trash")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.warning)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
+                        .frame(minHeight: 44)
+                        .padding(.vertical, 8)
                         .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.12)), in: .capsule)
                 }
                 .buttonStyle(.plain)
@@ -344,14 +399,13 @@ struct DriveRouteView: View {
     private func summaryMetric(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
                 .tracking(1.1)
                 .foregroundStyle(SpeedometerStyle.secondary)
             Text(value)
-                .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)

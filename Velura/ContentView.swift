@@ -34,6 +34,7 @@ struct ContentView: View {
     @State private var selectedTab: MainTab = .speedometer
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var unit: String { usesMiles ? "mph" : "km/h" }
     private var spokenUnit: String { usesMiles ? "miles per hour" : "kilometres per hour" }
@@ -68,6 +69,34 @@ struct ContentView: View {
 
     private func completeFirstLaunchSetup() {
         hasCompletedFirstLaunchSetup = true
+    }
+
+    private var speedWarningIcon: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .modifier(AdaptiveFont(size: 17, weight: .semibold))
+            .foregroundStyle(SpeedometerStyle.warning)
+            .symbolEffect(.pulse, options: .repeating, isActive: model.isOverspeedWarningActive && !reduceMotion)
+    }
+
+    private var speedWarningDetails: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("SPEED WARNING")
+                .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                .tracking(1.1)
+                .foregroundStyle(SpeedometerStyle.warning)
+            Text("Limit \(Int(displayedWarningThreshold.rounded())) \(unit)")
+                .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.foreground.opacity(0.86))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var speedWarningValue: some View {
+        Text("\(Int(displayedSpeed.rounded())) \(unit)")
+            .modifier(AdaptiveFont(size: 18, weight: .semibold, design: .rounded).monospacedDigit())
+            .foregroundStyle(SpeedometerStyle.foreground)
+            .contentTransition(.numericText())
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var mainTabInterface: some View {
@@ -126,29 +155,25 @@ struct ContentView: View {
         model.configureOverspeedWarning(enabled: overspeedWarningEnabled, thresholdKmh: overspeedThresholdKmh)
     }
 
+    @ViewBuilder
     private var speedWarningBanner: some View {
-        HStack(spacing: 11) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(SpeedometerStyle.warning)
-                .symbolEffect(.pulse, options: .repeating, isActive: model.isOverspeedWarningActive && !reduceMotion)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("SPEED WARNING")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.1)
-                    .foregroundStyle(SpeedometerStyle.warning)
-                Text("Limit \(Int(displayedWarningThreshold.rounded())) \(unit)")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.foreground.opacity(0.86))
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        speedWarningIcon
+                        speedWarningDetails
+                    }
+                    speedWarningValue
+                }
+            } else {
+                HStack(spacing: 11) {
+                    speedWarningIcon
+                    speedWarningDetails
+                    Spacer(minLength: 8)
+                    speedWarningValue
+                }
             }
-
-            Spacer(minLength: 8)
-
-            Text("\(Int(displayedSpeed.rounded())) \(unit)")
-                .font(.system(size: 18, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(SpeedometerStyle.foreground)
-                .contentTransition(.numericText())
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
@@ -187,55 +212,69 @@ struct ContentView: View {
     }
 
     private var settingsScreen: some View {
-        ZStack {
-            SpeedometerStyle.background.ignoresSafeArea()
+        GeometryReader { geometry in
+            ZStack {
+                SpeedometerStyle.background.ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
-                    pageHeader(title: "Settings", subtitle: "Personalize your speedometer")
-                    unitSetting
-                    speedWarningSetting
-                    gpsStatusSetting
-                    rangePicker
-                    dashboardDisplayScaleSetting
-                    appearanceSection
-                    DashboardLayoutSettingsSection(layout: dashboardLayout)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        pageHeader(title: "Settings", subtitle: "Personalize your speedometer")
+                        unitSetting
+                        speedWarningSetting
+                        gpsStatusSetting
+                        rangePicker
+                        dashboardDisplayScaleSetting
+                        appearanceSection
+                        DashboardLayoutSettingsSection(layout: dashboardLayout)
+                    }
+                    .padding(.horizontal, geometry.size.width < 380 ? 16 : 22)
+                    .padding(.top, 14)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: 520)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 14)
-                .padding(.bottom, 28)
-                .frame(maxWidth: 520)
-                .frame(maxWidth: .infinity)
             }
         }
+        .toolbar(.visible, for: .tabBar)
     }
 
     private var dashboardDisplayScaleSetting: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 15, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 15, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Dashboard display")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                     Text("Scale the gauge and speed readout")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                 }
             }
 
-            Picker("Dashboard scale", selection: $dashboardDisplayScaleRawValue) {
-                ForEach(DashboardDisplayScale.allCases) { scale in
-                    Text(scale.title).tag(scale.rawValue)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    Picker("Dashboard scale", selection: $dashboardDisplayScaleRawValue) {
+                        ForEach(DashboardDisplayScale.allCases) { scale in
+                            Text(scale.title).tag(scale.rawValue)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                } else {
+                    Picker("Dashboard scale", selection: $dashboardDisplayScaleRawValue) {
+                        ForEach(DashboardDisplayScale.allCases) { scale in
+                            Text(scale.title).tag(scale.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 }
             }
-            .pickerStyle(.segmented)
             .accessibilityLabel("Dashboard display scale")
 
             Text("Controls and trip metrics stay full size.")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(15)
@@ -247,24 +286,24 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 15) {
             HStack(spacing: 10) {
                 Image(systemName: "paintpalette.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 15, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Appearance")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                     Text("Choose a theme and dial style")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                 }
             }
 
             VStack(alignment: .leading, spacing: 9) {
                 Text("APP THEME")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 9, weight: .bold, design: .rounded))
                     .tracking(1.1)
                     .foregroundStyle(SpeedometerStyle.secondary)
-                HStack(spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 190 : 92), spacing: 8)], spacing: 8) {
                     ForEach(AppearanceTheme.allCases) { theme in
                         themeOption(theme)
                     }
@@ -282,10 +321,10 @@ struct ContentView: View {
 
             VStack(alignment: .leading, spacing: 9) {
                 Text("SPEEDOMETER DIAL")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 9, weight: .bold, design: .rounded))
                     .tracking(1.1)
                     .foregroundStyle(SpeedometerStyle.secondary)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 200 : 104), spacing: 8)], spacing: 8) {
                     ForEach(SpeedometerDialStyle.allCases) { style in
                         dialOption(style)
                     }
@@ -302,10 +341,10 @@ struct ContentView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Custom colors")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                     Text("Tune your background, accent and positive status color")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                 }
                 Spacer(minLength: 0)
@@ -323,9 +362,10 @@ struct ContentView: View {
                 }
             } label: {
                 Label("Reset to defaults", systemImage: "arrow.counterclockwise")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.accent)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(minHeight: 44, alignment: .leading)
                     .padding(.vertical, 5)
             }
             .buttonStyle(.plain)
@@ -339,62 +379,116 @@ struct ContentView: View {
     }
 
     private func customColorPicker(_ title: String, detail: String, selection: Binding<Color>) -> some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                Text(detail)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                        Text(detail)
+                            .modifier(AdaptiveFont(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ColorPicker(title, selection: selection, supportsOpacity: false)
+                        .labelsHidden()
+                        .tint(SpeedometerStyle.accent)
+                        .accessibilityLabel(title)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                        Text(detail)
+                            .modifier(AdaptiveFont(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                    }
+                    Spacer(minLength: 4)
+                    ColorPicker(title, selection: selection, supportsOpacity: false)
+                        .labelsHidden()
+                        .tint(SpeedometerStyle.accent)
+                        .accessibilityLabel(title)
+                }
             }
-            Spacer(minLength: 4)
-            ColorPicker(title, selection: selection, supportsOpacity: false)
-                .labelsHidden()
-                .tint(SpeedometerStyle.accent)
-                .accessibilityLabel(title)
         }
         .padding(.horizontal, 11)
-        .padding(.vertical, 8)
+        .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 11 : 8)
         .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 
+    private var previewStartButton: some View {
+        Button {} label: {
+            Text("Start drive")
+                .modifier(AdaptiveFont(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.accentForeground)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(SpeedometerStyle.accent, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(true)
+    }
+
     private var customThemePreview: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 7) {
-                Image(systemName: "speedometer")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(SpeedometerStyle.accent)
-                Text("VELURA")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .tracking(1.4)
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                Spacer()
-                Label("GPS ready", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.mint)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "speedometer")
+                                .modifier(AdaptiveFont(size: 12, weight: .semibold))
+                                .foregroundStyle(SpeedometerStyle.accent)
+                            Text("VELURA")
+                                .modifier(AdaptiveFont(size: 9, weight: .bold, design: .rounded))
+                                .tracking(1.4)
+                                .foregroundStyle(SpeedometerStyle.foreground)
+                        }
+                        Label("GPS ready", systemImage: "checkmark.circle.fill")
+                            .modifier(AdaptiveFont(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.mint)
+                    }
+                } else {
+                    HStack(spacing: 7) {
+                        Image(systemName: "speedometer")
+                            .modifier(AdaptiveFont(size: 12, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.accent)
+                        Text("VELURA")
+                            .modifier(AdaptiveFont(size: 9, weight: .bold, design: .rounded))
+                            .tracking(1.4)
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                        Spacer()
+                        Label("GPS ready", systemImage: "checkmark.circle.fill")
+                            .modifier(AdaptiveFont(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.mint)
+                    }
+                }
             }
 
-            HStack(alignment: .center) {
-                Text("\(Int(displayedSpeed(for: 72).rounded())) \(unit)")
-                    .font(.system(size: 25, weight: .light, design: .rounded).monospacedDigit())
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                Spacer()
-                Button {} label: {
-                    Text("Start drive")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.accentForeground)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(SpeedometerStyle.accent, in: Capsule())
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(Int(displayedSpeed(for: 72).rounded())) \(unit)")
+                            .modifier(AdaptiveFont(size: 25, weight: .light, design: .rounded).monospacedDigit())
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                        previewStartButton
+                    }
+                } else {
+                    HStack(alignment: .center) {
+                        Text("\(Int(displayedSpeed(for: 72).rounded())) \(unit)")
+                            .modifier(AdaptiveFont(size: 25, weight: .light, design: .rounded).monospacedDigit())
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                        Spacer()
+                        previewStartButton
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(true)
             }
 
             Label("Speed warning", systemImage: "exclamationmark.triangle.fill")
-                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .modifier(AdaptiveFont(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.warning)
         }
         .padding(13)
@@ -415,17 +509,17 @@ struct ContentView: View {
         } label: {
             VStack(alignment: .leading, spacing: 7) {
                 themePreview(theme)
+                    .dynamicTypeSize(.large)
                     .frame(height: 58)
-                HStack(spacing: 3) {
+                HStack(alignment: .top, spacing: 3) {
                     Text(theme.title)
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 9, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 10, weight: .semibold))
+                            .modifier(AdaptiveFont(size: 10, weight: .semibold))
                             .foregroundStyle(theme.accent)
                     }
                 }
@@ -457,10 +551,10 @@ struct ContentView: View {
                 .offset(y: 7)
             VStack(spacing: -2) {
                 Text(String(format: "%.0f", displayedSpeed))
-                    .font(.system(size: 14, weight: .medium, design: .rounded).monospacedDigit())
+                    .modifier(AdaptiveFont(size: 14, weight: .medium, design: .rounded).monospacedDigit())
                     .foregroundStyle(theme.foreground)
                 Text(unit)
-                    .font(.system(size: 6, weight: .medium, design: .rounded))
+                    .modifier(AdaptiveFont(size: 6, weight: .medium, design: .rounded))
                     .foregroundStyle(theme.secondary)
             }
             .offset(y: 3)
@@ -482,17 +576,17 @@ struct ContentView: View {
         } label: {
             VStack(spacing: 5) {
                 dialPreview(style)
+                    .dynamicTypeSize(.large)
                     .frame(height: 47)
-                HStack(spacing: 3) {
+                HStack(alignment: .top, spacing: 3) {
                     Text(style.title)
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 9, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 10, weight: .semibold))
+                            .modifier(AdaptiveFont(size: 10, weight: .semibold))
                             .foregroundStyle(SpeedometerStyle.accent)
                     }
                 }
@@ -550,7 +644,7 @@ struct ContentView: View {
                 .frame(width: 60, height: 45)
                 .offset(y: 5)
             Text(String(format: "%.0f", displayedSpeed))
-                .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .offset(y: 5)
         }
@@ -568,7 +662,7 @@ struct ContentView: View {
                 .fill(SpeedometerStyle.accent)
                 .frame(width: 4, height: 4)
             Text(String(format: "%.0f", displayedSpeed))
-                .font(.system(size: 8, weight: .semibold, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 8, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .offset(y: 5)
         }
@@ -587,7 +681,7 @@ struct ContentView: View {
                 lineWidth: 3
             )
             Text(String(format: "%.0f", displayedSpeed))
-                .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .offset(y: 5)
         }
@@ -599,9 +693,9 @@ struct ContentView: View {
         VStack(spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(String(format: "%.0f", displayedSpeed))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                    .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
                 Text(unit)
-                    .font(.system(size: 5, weight: .medium, design: .rounded))
+                    .modifier(AdaptiveFont(size: 5, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
             }
             .foregroundStyle(SpeedometerStyle.foreground)
@@ -621,7 +715,7 @@ struct ContentView: View {
                 Spacer()
                 Text("\(Int(rangeMaximum))")
             }
-            .font(.system(size: 5, weight: .medium, design: .rounded).monospacedDigit())
+            .modifier(AdaptiveFont(size: 5, weight: .medium, design: .rounded).monospacedDigit())
             .foregroundStyle(SpeedometerStyle.secondary)
         }
         .frame(width: 60, height: 40)
@@ -638,7 +732,7 @@ struct ContentView: View {
             GaugeArc(progress: gaugePreviewProgress, radiusFraction: 0.30)
                 .stroke(SpeedometerStyle.mint, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
             Text(String(format: "%.0f", displayedSpeed))
-                .font(.system(size: 9, weight: .medium, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 9, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .offset(y: 5)
         }
@@ -649,10 +743,10 @@ struct ContentView: View {
     private func pageHeader(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                .modifier(AdaptiveFont(size: 24, weight: .semibold, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.foreground)
             Text(subtitle)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -664,14 +758,14 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "speedometer")
-                    .font(.system(size: 15, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 15, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Speed unit")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                     Text("Applies to speed, range and distance")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                 }
                 Spacer()
@@ -694,29 +788,37 @@ struct ContentView: View {
             Toggle(isOn: $overspeedWarningEnabled) {
                 HStack(spacing: 10) {
                     Image(systemName: "bell.badge.fill")
-                        .font(.system(size: 15, weight: .semibold))
+                        .modifier(AdaptiveFont(size: 15, weight: .semibold))
                         .foregroundStyle(SpeedometerStyle.warning)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Speed warning")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                             .foregroundStyle(SpeedometerStyle.foreground)
                         Text("Vibrate and highlight above the limit")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                             .foregroundStyle(SpeedometerStyle.secondary)
                     }
                 }
             }
             .tint(SpeedometerStyle.warning)
 
-            HStack {
-                Text("Warning threshold")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                Spacer()
-                Text("\(Int(displayedWarningThreshold.rounded())) \(unit)")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(SpeedometerStyle.warning)
-                    .contentTransition(.numericText())
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Warning threshold")
+                            .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                        thresholdValue
+                    }
+                } else {
+                    HStack {
+                        Text("Warning threshold")
+                            .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                        Spacer()
+                        thresholdValue
+                    }
+                }
             }
 
             Slider(value: Binding(
@@ -731,7 +833,7 @@ struct ContentView: View {
                 Spacer()
                 Text(usesMiles ? "149 mph" : "240 km/h")
             }
-            .font(.system(size: 9, weight: .medium, design: .rounded))
+            .modifier(AdaptiveFont(size: 9, weight: .medium, design: .rounded))
             .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
         }
         .padding(15)
@@ -739,18 +841,26 @@ struct ContentView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
     }
 
+    private var thresholdValue: some View {
+        Text("\(Int(displayedWarningThreshold.rounded())) \(unit)")
+            .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+            .foregroundStyle(SpeedometerStyle.warning)
+            .contentTransition(.numericText())
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     private var gpsStatusSetting: some View {
         Toggle(isOn: $showsGPSStatus) {
             HStack(spacing: 10) {
                 Image(systemName: "location.circle")
-                    .font(.system(size: 16, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 16, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("GPS signal")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                     Text("Show signal status on Speed and Test")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                 }
             }
@@ -769,18 +879,18 @@ struct ContentView: View {
                     .fill(model.hasGPSFix ? SpeedometerStyle.mint.opacity(0.16) : SpeedometerStyle.foreground.opacity(0.07))
                     .frame(width: 34, height: 34)
                 Image(systemName: model.hasGPSFix ? "location.fill" : "location")
-                    .font(.system(size: 14, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 14, weight: .semibold))
                     .foregroundStyle(model.hasGPSFix ? SpeedometerStyle.mint : SpeedometerStyle.secondary)
                     .symbolEffect(.pulse, options: .repeating, isActive: model.isSessionActive && !model.hasGPSFix && !reduceMotion)
             }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.gpsStatusTitle)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 11, weight: .bold, design: .rounded))
                     .tracking(0.8)
                     .foregroundStyle(SpeedometerStyle.foreground)
                 Text(model.gpsStatusDetail)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -804,40 +914,57 @@ struct ContentView: View {
 
     private var accelerationTest: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "stopwatch")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(SpeedometerStyle.accent)
-                Text("ACCELERATION TEST")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.2)
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                Spacer()
-                Text("0–\(displayedAccelerationTarget) \(unit)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(SpeedometerStyle.accent)
-                    .contentTransition(.numericText())
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "stopwatch")
+                                .modifier(AdaptiveFont(size: 13, weight: .semibold))
+                                .foregroundStyle(SpeedometerStyle.accent)
+                            Text("ACCELERATION TEST")
+                                .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                                .tracking(1.2)
+                                .foregroundStyle(SpeedometerStyle.secondary)
+                        }
+                        Text("0–\(displayedAccelerationTarget) \(unit)")
+                            .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(SpeedometerStyle.accent)
+                            .contentTransition(.numericText())
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "stopwatch")
+                            .modifier(AdaptiveFont(size: 13, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.accent)
+                        Text("ACCELERATION TEST")
+                            .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                            .tracking(1.2)
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                        Spacer()
+                        Text("0–\(displayedAccelerationTarget) \(unit)")
+                            .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(SpeedometerStyle.accent)
+                            .contentTransition(.numericText())
+                    }
+                }
             }
 
-            HStack(spacing: 7) {
-                accelerationPresetButton(20)
-                accelerationPresetButton(50)
-                accelerationPresetButton(100)
-                Button {
-                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                        model.selectCustomAccelerationTarget(Double(model.customAccelerationTargetKmh))
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                        accelerationPresetButton(20)
+                        accelerationPresetButton(50)
+                        accelerationPresetButton(100)
+                        customAccelerationPresetButton
                     }
-                } label: {
-                    Text("Custom")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(model.accelerationPreset == -1 ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .glassEffect(.regular.tint(model.accelerationPreset == -1 ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
+                } else {
+                    HStack(spacing: 7) {
+                        accelerationPresetButton(20)
+                        accelerationPresetButton(50)
+                        accelerationPresetButton(100)
+                        customAccelerationPresetButton
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Custom acceleration target")
-                .accessibilityAddTraits(model.accelerationPreset == -1 ? .isSelected : [])
             }
 
             if model.accelerationPreset == -1 {
@@ -854,80 +981,31 @@ struct ContentView: View {
                         Spacer()
                         Text("\(Int((240 * unitConversion).rounded())) \(unit)")
                     }
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .modifier(AdaptiveFont(size: 9, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
                 }
                 .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
             }
 
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.accelerationStatusTitle)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.foreground)
-                        .contentTransition(.opacity)
-                    Text(model.accelerationStatusDetail(target: displayedAccelerationTarget, unit: unit))
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-
-                Spacer(minLength: 2)
-
-                TimelineView(.animation(minimumInterval: 0.05, paused: model.accelerationState != .timing)) { context in
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text(accelerationTimeText(model.accelerationElapsed(at: context.date)))
-                            .font(.system(size: 21, weight: .semibold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(model.accelerationState == .completed ? SpeedometerStyle.mint : SpeedometerStyle.foreground)
-                            .contentTransition(.numericText())
-                        Text(model.bestAccelerationTime.map { "BEST \(accelerationTimeText($0))" } ?? "BEST —")
-                            .font(.system(size: 9, weight: .bold, design: .rounded).monospacedDigit())
-                            .tracking(0.5)
-                            .foregroundStyle(model.isNewAccelerationBest ? SpeedometerStyle.mint : SpeedometerStyle.secondary)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 8) {
+                        accelerationStatusLabel
+                        HStack {
+                            Spacer()
+                            accelerationTimerReadout
+                        }
+                    }
+                } else {
+                    HStack(alignment: .center, spacing: 12) {
+                        accelerationStatusLabel
+                        Spacer(minLength: 2)
+                        accelerationTimerReadout
                     }
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Elapsed time and best acceleration result")
             }
 
-            HStack(spacing: 8) {
-                Button {
-                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                        model.startAccelerationTest()
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: model.accelerationPrimaryActionSymbol)
-                            .font(.system(size: 11, weight: .bold))
-                        Text(model.accelerationPrimaryActionTitle)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 39)
-                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.2)).interactive(), in: .capsule)
-                }
-                .buttonStyle(.plain)
-                .disabled(!model.isAccelerationPrimaryActionEnabled)
-                .accessibilityHint("Arms a GPS acceleration run when ready")
-
-                Button {
-                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                        model.resetAccelerationTest()
-                    }
-                } label: {
-                    Text("Reset")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.secondary)
-                        .frame(width: 68, height: 39)
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Reset acceleration test")
-            }
+            embeddedAccelerationActions
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
@@ -941,28 +1019,28 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 13, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 13, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.accent)
                 Text("RECENT ATTEMPTS")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.2)
                     .foregroundStyle(SpeedometerStyle.secondary)
                 Spacer()
                 Text("\(model.accelerationAttempts.count)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                    .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(SpeedometerStyle.secondary)
             }
 
             if model.accelerationAttemptGroups.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "stopwatch")
-                        .font(.system(size: 20, weight: .light))
+                        .modifier(AdaptiveFont(size: 20, weight: .light))
                         .foregroundStyle(SpeedometerStyle.accent.opacity(0.8))
                     Text("No completed runs yet")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                     Text("Your attempts and best times will be saved here by target.")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -973,18 +1051,18 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 9) {
                         HStack(alignment: .center) {
                             Text("0–\(displayedAccelerationTarget(for: group.targetKmh)) \(unit)")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
+                                .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                                 .foregroundStyle(SpeedometerStyle.foreground)
 
                             Spacer()
 
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("BEST")
-                                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                                    .modifier(AdaptiveFont(size: 8, weight: .bold, design: .rounded))
                                     .tracking(0.8)
                                     .foregroundStyle(SpeedometerStyle.secondary)
                                 Text(group.bestTime.map { accelerationTimeText($0) } ?? "—")
-                                    .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                                    .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
                                     .foregroundStyle(SpeedometerStyle.mint)
                             }
                         }
@@ -993,10 +1071,10 @@ struct ContentView: View {
                             HStack(spacing: 10) {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(attempt.date.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                                         .foregroundStyle(SpeedometerStyle.foreground.opacity(0.84))
                                     Text("\(accelerationTimeText(attempt.duration)) · 0–\(displayedAccelerationTarget(for: attempt.targetKmh)) \(unit)")
-                                        .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                                        .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded).monospacedDigit())
                                         .foregroundStyle(SpeedometerStyle.secondary)
                                 }
 
@@ -1006,9 +1084,9 @@ struct ContentView: View {
                                     model.deleteAccelerationAttempt(attempt.id)
                                 } label: {
                                     Image(systemName: "trash")
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .modifier(AdaptiveFont(size: 11, weight: .semibold))
                                         .foregroundStyle(SpeedometerStyle.warning)
-                                        .frame(width: 34, height: 34)
+                                        .frame(width: 44, height: 44)
                                         .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.12)).interactive(), in: .circle)
                                 }
                                 .buttonStyle(.plain)
@@ -1031,6 +1109,111 @@ struct ContentView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
     }
 
+    private var customAccelerationPresetButton: some View {
+        Button {
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                model.selectCustomAccelerationTarget(Double(model.customAccelerationTargetKmh))
+            }
+        } label: {
+            Text("Custom")
+                .modifier(AdaptiveFont(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(model.accelerationPreset == -1 ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 44)
+                .glassEffect(.regular.tint(model.accelerationPreset == -1 ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Custom acceleration target")
+        .accessibilityAddTraits(model.accelerationPreset == -1 ? .isSelected : [])
+    }
+
+    private var accelerationStatusLabel: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(model.accelerationStatusTitle)
+                .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.foreground)
+                .contentTransition(.opacity)
+            Text(model.accelerationStatusDetail(target: displayedAccelerationTarget, unit: unit))
+                .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var accelerationTimerReadout: some View {
+        TimelineView(.animation(minimumInterval: 0.05, paused: model.accelerationState != .timing)) { context in
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(accelerationTimeText(model.accelerationElapsed(at: context.date)))
+                    .modifier(AdaptiveFont(size: 21, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(model.accelerationState == .completed ? SpeedometerStyle.mint : SpeedometerStyle.foreground)
+                    .contentTransition(.numericText())
+                Text(model.bestAccelerationTime.map { "BEST \(accelerationTimeText($0))" } ?? "BEST —")
+                    .modifier(AdaptiveFont(size: 9, weight: .bold, design: .rounded).monospacedDigit())
+                    .tracking(0.5)
+                    .foregroundStyle(model.isNewAccelerationBest ? SpeedometerStyle.mint : SpeedometerStyle.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Elapsed time and best acceleration result")
+    }
+
+    @ViewBuilder
+    private var embeddedAccelerationActions: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 8) {
+                accelerationStartButton
+                accelerationResetButton
+            }
+        } else {
+            HStack(spacing: 8) {
+                accelerationStartButton
+                accelerationResetButton
+            }
+        }
+    }
+
+    private var accelerationStartButton: some View {
+        Button {
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                model.startAccelerationTest()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: model.accelerationPrimaryActionSymbol)
+                    .modifier(AdaptiveFont(size: 11, weight: .bold))
+                Text(model.accelerationPrimaryActionTitle)
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(SpeedometerStyle.foreground)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
+            .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.2)).interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .disabled(!model.isAccelerationPrimaryActionEnabled)
+        .accessibilityHint("Arms a GPS acceleration run when ready")
+    }
+
+    private var accelerationResetButton: some View {
+        Button {
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                model.resetAccelerationTest()
+            }
+        } label: {
+            Text("Reset")
+                .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.secondary)
+                .frame(minWidth: 68, minHeight: 44)
+                .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Reset acceleration test")
+    }
+
     private func accelerationPresetButton(_ preset: Int) -> some View {
         let isSelected = model.accelerationPreset == preset
         return Button {
@@ -1039,10 +1222,12 @@ struct ContentView: View {
             }
         } label: {
             Text("0–\(displayedAccelerationTarget(for: preset)) \(unit)")
-                .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
+                .frame(minHeight: 44)
                 .glassEffect(.regular.tint(isSelected ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
@@ -1054,35 +1239,52 @@ struct ContentView: View {
         String(format: "%.2f s", time)
     }
 
+    private var dialRangeHeading: some View {
+        Text("DIAL RANGE")
+            .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+            .tracking(1.4)
+            .foregroundStyle(SpeedometerStyle.secondary)
+    }
+
+    private var dialRangeValue: some View {
+        Text("0–\(Int(rangeMaximum)) \(unit)")
+            .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+            .foregroundStyle(SpeedometerStyle.accent)
+            .contentTransition(.numericText())
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     private var rangePicker: some View {
         VStack(alignment: .leading, spacing: 11) {
-            HStack {
-                Text("DIAL RANGE")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.4)
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                Spacer()
-                Text("0–\(Int(rangeMaximum)) \(unit)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(SpeedometerStyle.accent)
-                    .contentTransition(.numericText())
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 4) {
+                        dialRangeHeading
+                        dialRangeValue
+                    }
+                } else {
+                    HStack {
+                        dialRangeHeading
+                        Spacer()
+                        dialRangeValue
+                    }
+                }
             }
 
-            HStack(spacing: 8) {
-                rangeButton(20)
-                rangeButton(50)
-                rangeButton(100)
-                Button {
-                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { selectedRange = -1 }
-                } label: {
-                    Text("Custom")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(selectedRange == -1 ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .glassEffect(.regular.tint(selectedRange == -1 ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
+            if dynamicTypeSize.isAccessibilitySize {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    rangeButton(20)
+                    rangeButton(50)
+                    rangeButton(100)
+                    customRangeButton
                 }
-                .buttonStyle(.plain)
+            } else {
+                HStack(spacing: 8) {
+                    rangeButton(20)
+                    rangeButton(50)
+                    rangeButton(100)
+                    customRangeButton
+                }
             }
 
             if selectedRange == -1 {
@@ -1093,15 +1295,30 @@ struct ContentView: View {
                     ), in: 20...240, step: 5)
                     .tint(SpeedometerStyle.accent)
                     .accessibilityLabel("Custom dial maximum")
-                    HStack {
-                        Text("20")
-                        Spacer()
-                        Text("DRAG TO SET MAXIMUM")
-                            .tracking(1.1)
-                        Spacer()
-                        Text("240 \(unit)")
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("DRAG TO SET MAXIMUM")
+                                    .tracking(1.1)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                HStack {
+                                    Text("20")
+                                    Spacer()
+                                    Text("240 \(unit)")
+                                }
+                            }
+                        } else {
+                            HStack {
+                                Text("20")
+                                Spacer()
+                                Text("DRAG TO SET MAXIMUM")
+                                    .tracking(1.1)
+                                Spacer()
+                                Text("240 \(unit)")
+                            }
+                        }
                     }
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 9, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
                 }
                 .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
@@ -1113,16 +1330,30 @@ struct ContentView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
     }
 
+    private var customRangeButton: some View {
+        Button {
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { selectedRange = -1 }
+        } label: {
+            Text("Custom")
+                .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(selectedRange == -1 ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 44)
+                .glassEffect(.regular.tint(selectedRange == -1 ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+    }
+
     private func rangeButton(_ value: Int) -> some View {
         let isSelected = selectedRange == value
         return Button {
             withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { selectedRange = value }
         } label: {
             Text("0–\(value)")
-                .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .frame(minHeight: 44)
                 .glassEffect(.regular.tint(isSelected ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
@@ -1134,6 +1365,7 @@ struct ContentView: View {
 struct SpeedometerGauge: View {
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let speed: Double
     let maximum: Double
     let dialStyle: SpeedometerDialStyle
@@ -1153,13 +1385,42 @@ struct SpeedometerGauge: View {
             let radius = diameter * 0.43
             let gaugeColor = isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.accent
 
+            let digitalReadoutSize = min(
+                72 * displayScale.readoutMultiplier * dynamicTypeSize.veluraScaleFactor,
+                max(44, proxy.size.width * 0.3)
+            )
+            let digitalUnitSize = min(
+                15 * displayScale.readoutMultiplier * dynamicTypeSize.veluraScaleFactor,
+                max(12, proxy.size.width * 0.1)
+            )
+            let dialReadoutSize = min(
+                76 * displayScale.readoutMultiplier * dynamicTypeSize.veluraScaleFactor,
+                max(44, diameter * 0.44)
+            )
+            let dialUnitSize = min(
+                15 * displayScale.readoutMultiplier * dynamicTypeSize.veluraScaleFactor,
+                max(12, diameter * 0.105)
+            )
+            let dialLabelSize = min(
+                12 * dynamicTypeSize.veluraScaleFactor,
+                max(10, diameter * 0.07)
+            )
+
             ZStack {
                 if dialStyle == .digitalHUD {
-                    digitalHUD(gaugeColor: gaugeColor)
+                    digitalHUD(gaugeColor: gaugeColor, readoutSize: digitalReadoutSize, unitSize: digitalUnitSize)
                         .frame(width: min(proxy.size.width * 0.94, 420))
                         .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 } else {
-                    dialFace(diameter: diameter, center: center, radius: radius, gaugeColor: gaugeColor)
+                    dialFace(
+                        diameter: diameter,
+                        center: center,
+                        radius: radius,
+                        gaugeColor: gaugeColor,
+                        readoutSize: dialReadoutSize,
+                        unitSize: dialUnitSize,
+                        labelSize: dialLabelSize
+                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1171,7 +1432,15 @@ struct SpeedometerGauge: View {
     }
 
     @ViewBuilder
-    private func dialFace(diameter: CGFloat, center: CGPoint, radius: CGFloat, gaugeColor: Color) -> some View {
+    private func dialFace(
+        diameter: CGFloat,
+        center: CGPoint,
+        radius: CGFloat,
+        gaugeColor: Color,
+        readoutSize: CGFloat,
+        unitSize: CGFloat,
+        labelSize: CGFloat
+    ) -> some View {
         ZStack {
             if dialStyle == .twinRing {
                 GaugeArc(progress: 1, radiusFraction: 0.43)
@@ -1268,20 +1537,20 @@ struct SpeedometerGauge: View {
                 let angle = (150 + 240 * fraction) * .pi / 180
                 let labelRadius = radius * 0.77
                 Text(index == dialStyle.labelCount - 1 ? "\(Int(maximum))" : "\(Int(maximum * fraction))")
-                    .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
+                    .font(.system(size: labelSize, weight: .medium, design: .rounded).monospacedDigit())
                     .foregroundStyle(SpeedometerStyle.secondary)
                     .position(x: center.x + cos(angle) * labelRadius, y: center.y + sin(angle) * labelRadius)
             }
 
             VStack(spacing: 1) {
                 Text(String(format: "%.0f", speed))
-                    .font(.system(size: 76 * displayScale.readoutMultiplier, weight: .light, design: .rounded).monospacedDigit())
+                    .font(.system(size: readoutSize, weight: .light, design: .rounded).monospacedDigit())
                     .foregroundStyle(isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.foreground)
                     .contentTransition(.numericText())
                     .minimumScaleFactor(0.68)
                     .lineLimit(1)
                 Text(unit)
-                    .font(.system(size: 15 * displayScale.readoutMultiplier, weight: .medium, design: .rounded))
+                    .font(.system(size: unitSize, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
             }
             .position(x: center.x, y: center.y + 2)
@@ -1290,28 +1559,28 @@ struct SpeedometerGauge: View {
         }
     }
 
-    private func digitalHUD(gaugeColor: Color) -> some View {
+    private func digitalHUD(gaugeColor: Color, readoutSize: CGFloat, unitSize: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 17) {
             HStack {
                 Text("LIVE SPEED")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.3)
                     .foregroundStyle(SpeedometerStyle.secondary)
                 Spacer()
                 Image(systemName: "waveform.path")
-                    .font(.system(size: 13, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 13, weight: .semibold))
                     .foregroundStyle(gaugeColor)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(String(format: "%.0f", speed))
-                    .font(.system(size: 72 * displayScale.readoutMultiplier, weight: .light, design: .rounded).monospacedDigit())
+                    .font(.system(size: readoutSize, weight: .light, design: .rounded).monospacedDigit())
                     .foregroundStyle(isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.foreground)
                     .contentTransition(.numericText())
                     .minimumScaleFactor(0.68)
                     .lineLimit(1)
                 Text(unit)
-                    .font(.system(size: 15 * displayScale.readoutMultiplier, weight: .medium, design: .rounded))
+                    .font(.system(size: unitSize, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
             }
 
@@ -1328,7 +1597,7 @@ struct SpeedometerGauge: View {
                 .frame(height: 8)
                 Text("\(Int(maximum))")
             }
-            .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+            .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
             .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(22)

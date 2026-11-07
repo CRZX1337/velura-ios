@@ -36,6 +36,7 @@ struct SpeedDashboardView: View {
     @ObservedObject private var appearance = AppAppearance.shared
     @ObservedObject private var dashboardLayout = AppDashboardLayout.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var model: SpeedometerModel
 
     let dialStyle: SpeedometerDialStyle
@@ -54,9 +55,16 @@ struct SpeedDashboardView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let compact = geometry.size.height < 710
-            let standardGaugeHeight = min(max(geometry.size.height * 0.39, 274), 360)
-            let gaugeHeight = min(max(standardGaugeHeight * displayScale.gaugeHeightMultiplier, 220), 410)
+            let landscape = geometry.size.width > geometry.size.height
+            let compact = geometry.size.height < 710 || landscape
+            let compactWidth = geometry.size.width < 380 || dynamicTypeSize.isAccessibilitySize
+            let standardGaugeHeight = landscape
+                ? min(max(geometry.size.height * 0.52, 190), 260)
+                : min(max(geometry.size.height * 0.39, 235), 360)
+            let gaugeHeight = min(
+                max(standardGaugeHeight * displayScale.gaugeHeightMultiplier, landscape ? 180 : 210),
+                landscape ? 310 : 410
+            )
 
             ZStack {
                 SpeedometerStyle.background.ignoresSafeArea()
@@ -65,12 +73,12 @@ struct SpeedDashboardView: View {
                     VStack(spacing: compact ? 14 : 19) {
                         brandHeader
                         ForEach(dashboardLayout.moduleOrder) { module in
-                            dashboardModule(module, gaugeHeight: gaugeHeight)
+                            dashboardModule(module, gaugeHeight: gaugeHeight, compactWidth: compactWidth)
                                 .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
                         }
                         accelerationControls
                     }
-                    .padding(.horizontal, geometry.size.width < 380 ? 18 : 22)
+                    .padding(.horizontal, geometry.size.width < 380 ? 16 : 22)
                     .padding(.top, compact ? 2 : 12)
                     .padding(.bottom, 18)
                     .frame(maxWidth: 520)
@@ -80,10 +88,11 @@ struct SpeedDashboardView: View {
                 }
             }
         }
+        .toolbar(.visible, for: .tabBar)
     }
 
     @ViewBuilder
-    private func dashboardModule(_ module: DashboardModule, gaugeHeight: CGFloat) -> some View {
+    private func dashboardModule(_ module: DashboardModule, gaugeHeight: CGFloat, compactWidth: Bool) -> some View {
         switch module {
         case .speed:
             SpeedometerGauge(
@@ -104,7 +113,7 @@ struct SpeedDashboardView: View {
             }
         case .driveMetrics:
             if dashboardLayout.isVisible(module) {
-                driveMetrics
+                driveMetrics(compact: compactWidth)
             }
         case .sessionControls:
             sessionControls
@@ -115,55 +124,94 @@ struct SpeedDashboardView: View {
         }
     }
 
+    @ViewBuilder
     private var brandHeader: some View {
-        ZStack {
-            Text("VELURA")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .tracking(5)
-                .foregroundStyle(SpeedometerStyle.foreground.opacity(0.88))
-                .accessibilityAddTraits(.isHeader)
-
-            if model.hasUnfinishedSession {
-                HStack {
-                    Spacer()
-                    Button(action: onResetRequested) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(SpeedometerStyle.secondary)
-                            .frame(width: 32, height: 32)
-                            .glassEffect(.regular.interactive(), in: .circle)
+        if dynamicTypeSize.isAccessibilitySize {
+            HStack {
+                brandTitle
+                Spacer(minLength: 8)
+                if model.hasUnfinishedSession { resetDriveButton }
+            }
+            .frame(minHeight: 44)
+        } else {
+            ZStack {
+                brandTitle
+                if model.hasUnfinishedSession {
+                    HStack {
+                        Spacer()
+                        resetDriveButton
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Reset drive statistics")
                 }
             }
+            .frame(minHeight: 44)
         }
-        .frame(height: 36)
+    }
+
+    private var brandTitle: some View {
+        Text("VELURA")
+            .modifier(AdaptiveFont(size: 14, weight: .bold, design: .rounded))
+            .tracking(5)
+            .foregroundStyle(SpeedometerStyle.foreground.opacity(0.88))
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var resetDriveButton: some View {
+        Button(action: onResetRequested) {
+            Image(systemName: "arrow.counterclockwise")
+                .modifier(AdaptiveFont(size: 11, weight: .semibold))
+                .foregroundStyle(SpeedometerStyle.secondary)
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Reset drive statistics")
     }
 
     private var gpsStatusPill: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(model.hasGPSFix ? SpeedometerStyle.mint : Color.orange.opacity(0.9))
-                .frame(width: 10, height: 10)
-                .shadow(color: (model.hasGPSFix ? SpeedometerStyle.mint : Color.orange).opacity(0.5), radius: 5)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(model.hasGPSFix ? SpeedometerStyle.mint : Color.orange.opacity(0.9))
+                            .frame(width: 10, height: 10)
+                            .shadow(color: (model.hasGPSFix ? SpeedometerStyle.mint : Color.orange).opacity(0.5), radius: 5)
+                        Text(model.gpsStatusTitle)
+                            .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.foreground.opacity(0.92))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(gpsDetail)
+                        .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .padding(.leading, 20)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(model.hasGPSFix ? SpeedometerStyle.mint : Color.orange.opacity(0.9))
+                        .frame(width: 10, height: 10)
+                        .shadow(color: (model.hasGPSFix ? SpeedometerStyle.mint : Color.orange).opacity(0.5), radius: 5)
 
-            Text(model.gpsStatusTitle)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .tracking(0.35)
-                .foregroundStyle(SpeedometerStyle.foreground.opacity(0.92))
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
+                    Text(model.gpsStatusTitle)
+                        .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                        .tracking(0.35)
+                        .foregroundStyle(SpeedometerStyle.foreground.opacity(0.92))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
 
-            Rectangle()
-                .fill(SpeedometerStyle.foreground.opacity(0.16))
-                .frame(width: 1, height: 19)
+                    Rectangle()
+                        .fill(SpeedometerStyle.foreground.opacity(0.16))
+                        .frame(width: 1, height: 19)
 
-            Text(gpsDetail)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundStyle(SpeedometerStyle.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                    Text(gpsDetail)
+                        .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+            }
         }
         .padding(.horizontal, 17)
         .padding(.vertical, 10)
@@ -186,17 +234,30 @@ struct SpeedDashboardView: View {
         return "Ready"
     }
 
-    private var driveMetrics: some View {
+    private func driveMetrics(compact: Bool) -> some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(spacing: 0) {
-                metric(title: "DISTANCE", value: "\(String(format: "%.1f", displayedDistance)) \(distanceUnit)")
-                metricDivider
-                metric(title: "TOP SPEED", value: "\(Int(displayedTopSpeed.rounded())) \(unit)")
-                metricDivider
-                metric(title: "DURATION", value: dashboardDuration(model.elapsedTime(at: context.date)))
+            Group {
+                if compact {
+                    VStack(alignment: .leading, spacing: 11) {
+                        metric(title: "DISTANCE", value: "\(String(format: "%.1f", displayedDistance)) \(distanceUnit)")
+                        Rectangle().fill(SpeedometerStyle.foreground.opacity(0.11)).frame(height: 1)
+                        metric(title: "TOP SPEED", value: "\(Int(displayedTopSpeed.rounded())) \(unit)")
+                        Rectangle().fill(SpeedometerStyle.foreground.opacity(0.11)).frame(height: 1)
+                        metric(title: "DURATION", value: dashboardDuration(model.elapsedTime(at: context.date)))
+                    }
+                    .padding(.vertical, 15)
+                } else {
+                    HStack(spacing: 0) {
+                        metric(title: "DISTANCE", value: "\(String(format: "%.1f", displayedDistance)) \(distanceUnit)")
+                        metricDivider
+                        metric(title: "TOP SPEED", value: "\(Int(displayedTopSpeed.rounded())) \(unit)")
+                        metricDivider
+                        metric(title: "DURATION", value: dashboardDuration(model.elapsedTime(at: context.date)))
+                    }
+                    .padding(.vertical, 20)
+                }
             }
             .padding(.horizontal, 11)
-            .padding(.vertical, 20)
             .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .glassEffect(.regular, in: .rect(cornerRadius: 24))
             .transaction { transaction in
@@ -214,18 +275,17 @@ struct SpeedDashboardView: View {
     private func metric(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .modifier(AdaptiveFont(size: 9, weight: .bold, design: .rounded))
                 .tracking(0.9)
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
 
             Text(value)
-                .font(.system(size: 19, weight: .semibold, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 19, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .contentTransition(.numericText())
-                .lineLimit(1)
-                .minimumScaleFactor(0.68)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 8)
@@ -243,15 +303,15 @@ struct SpeedDashboardView: View {
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: model.isSessionActive ? "pause.fill" : "play.fill")
-                        .font(.system(size: 18, weight: .bold))
+                        .modifier(AdaptiveFont(size: 18, weight: .bold))
                         .foregroundStyle(SpeedometerStyle.accent)
 
                     Text(primaryActionTitle)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 62)
+                .frame(minHeight: 62)
                 .contentShape(Rectangle())
                 .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.23)).interactive(), in: .capsule)
             }
@@ -263,10 +323,10 @@ struct SpeedDashboardView: View {
                     model.finishSession()
                 } label: {
                     Text("Finish")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 49)
+                        .frame(minHeight: 49)
                         .contentShape(Rectangle())
                         .glassEffect(.regular.interactive(), in: .capsule)
                 }
@@ -287,7 +347,7 @@ struct SpeedDashboardView: View {
 
     private var safetyNote: some View {
         Text("GPS SPEED IS AN ESTIMATE. DRIVE SAFELY.")
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
+            .modifier(AdaptiveFont(size: 9, weight: .semibold, design: .rounded))
             .tracking(1.25)
             .foregroundStyle(SpeedometerStyle.secondary.opacity(0.62))
             .padding(.top, 1)

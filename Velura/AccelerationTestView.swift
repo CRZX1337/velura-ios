@@ -4,6 +4,7 @@ struct AccelerationTestView: View {
     @ObservedObject var model: SpeedometerModel
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
 
     private var unitConversion: Double { usesMiles ? 0.621371 : 1 }
@@ -17,7 +18,9 @@ struct AccelerationTestView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let compact = geometry.size.height < 760
+            let landscape = geometry.size.width > geometry.size.height
+            let compact = geometry.size.height < 760 || landscape
+            let stackedTargets = geometry.size.width < 390 || dynamicTypeSize.isAccessibilitySize
 
             ZStack {
                 SpeedometerStyle.background.ignoresSafeArea()
@@ -25,12 +28,12 @@ struct AccelerationTestView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: compact ? 14 : 18) {
                         header
-                        targetPicker
+                        targetPicker(isStacked: stackedTargets)
                         if model.accelerationPreset == -1 {
                             customTargetControl
                                 .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
                         }
-                        resultCard
+                        resultCard(isCompact: stackedTargets)
                         bestTimeCard
                         actionButtons
                         if !model.accelerationAttempts.isEmpty {
@@ -38,7 +41,7 @@ struct AccelerationTestView: View {
                                 .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
                         }
                     }
-                    .padding(.horizontal, geometry.size.width < 380 ? 18 : 22)
+                    .padding(.horizontal, geometry.size.width < 380 ? 16 : 22)
                     .padding(.top, compact ? 4 : 10)
                     .padding(.bottom, 22)
                     .frame(maxWidth: 520)
@@ -49,59 +52,89 @@ struct AccelerationTestView: View {
             }
         }
         .preferredColorScheme(appearance.theme.colorScheme)
+        .toolbar(.visible, for: .tabBar)
     }
 
     private var header: some View {
         VStack(spacing: 7) {
             Text("Acceleration test")
-                .font(.system(size: 21, weight: .semibold, design: .rounded))
+                .modifier(AdaptiveFont(size: 21, weight: .semibold, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.foreground)
             Text("Measure your launch")
-                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .modifier(AdaptiveFont(size: 14, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 84)
+        .padding(.vertical, 10)
+        .frame(minHeight: 68)
         .accessibilityElement(children: .combine)
     }
 
-    private var targetPicker: some View {
-        HStack(spacing: 4) {
-            ForEach([20, 50, 100], id: \.self) { preset in
-                targetButton(title: "0–\(displayedTarget(preset)) \(speedUnit)", isSelected: model.accelerationPreset == preset) {
-                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                        model.selectAccelerationPreset(preset)
-                    }
+    @ViewBuilder
+    private func targetPicker(isStacked: Bool) -> some View {
+        Group {
+            if isStacked {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
+                    presetTargetButton(20)
+                    presetTargetButton(50)
+                    presetTargetButton(100)
+                    customTargetButton
                 }
-                .accessibilityLabel("Acceleration target zero to \(displayedTarget(preset)) \(spokenSpeedUnit)")
-            }
-
-            targetButton(title: "Custom", isSelected: model.accelerationPreset == -1) {
-                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                    model.selectCustomAccelerationTarget(Double(model.customAccelerationTargetKmh))
+                .padding(5)
+                .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
+                }
+            } else {
+                HStack(spacing: 4) {
+                    presetTargetButton(20)
+                    presetTargetButton(50)
+                    presetTargetButton(100)
+                    customTargetButton
+                }
+                .padding(5)
+                .background(SpeedometerStyle.foreground.opacity(0.035), in: Capsule())
+                .glassEffect(.regular, in: .capsule)
+                .overlay {
+                    Capsule().stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
                 }
             }
-            .accessibilityLabel("Custom acceleration target")
-        }
-        .padding(5)
-        .frame(height: 58)
-        .background(SpeedometerStyle.foreground.opacity(0.035), in: Capsule())
-        .glassEffect(.regular, in: .capsule)
-        .overlay {
-            Capsule().stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Acceleration target")
         .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: model.accelerationPreset)
     }
 
+    private func presetTargetButton(_ preset: Int) -> some View {
+        targetButton(title: "0–\(displayedTarget(preset)) \(speedUnit)", isSelected: model.accelerationPreset == preset) {
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                model.selectAccelerationPreset(preset)
+            }
+        }
+        .accessibilityLabel("Acceleration target zero to \(displayedTarget(preset)) \(spokenSpeedUnit)")
+    }
+
+    private var customTargetButton: some View {
+        targetButton(title: "Custom", isSelected: model.accelerationPreset == -1) {
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                model.selectCustomAccelerationTarget(Double(model.customAccelerationTargetKmh))
+            }
+        }
+        .accessibilityLabel("Custom acceleration target")
+    }
+
     private func targetButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(isSelected ? SpeedometerStyle.accentForeground : SpeedometerStyle.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
-                .frame(height: 48)
+                .frame(minHeight: 48)
+                .padding(.horizontal, 3)
                 .background {
                     if isSelected {
                         Capsule()
@@ -115,18 +148,34 @@ struct AccelerationTestView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    private var customTargetValue: some View {
+        Text("\(target) \(speedUnit)")
+            .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+            .foregroundStyle(SpeedometerStyle.accent)
+            .contentTransition(.numericText())
+    }
+
     private var customTargetControl: some View {
         VStack(spacing: 5) {
-            HStack {
-                Text("CUSTOM TARGET")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.1)
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                Spacer()
-                Text("\(target) \(speedUnit)")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(SpeedometerStyle.accent)
-                    .contentTransition(.numericText())
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("CUSTOM TARGET")
+                            .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                            .tracking(1.1)
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                        customTargetValue
+                    }
+                } else {
+                    HStack {
+                        Text("CUSTOM TARGET")
+                            .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                            .tracking(1.1)
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                        Spacer()
+                        customTargetValue
+                    }
+                }
             }
 
             Slider(value: Binding(
@@ -142,7 +191,7 @@ struct AccelerationTestView: View {
                 Spacer()
                 Text("\(Int((240 * unitConversion).rounded())) \(speedUnit)")
             }
-            .font(.system(size: 9, weight: .medium, design: .rounded))
+            .modifier(AdaptiveFont(size: 9, weight: .medium, design: .rounded))
             .foregroundStyle(SpeedometerStyle.secondary.opacity(0.82))
         }
         .padding(.horizontal, 15)
@@ -156,44 +205,64 @@ struct AccelerationTestView: View {
         .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
     }
 
-    private var resultCard: some View {
+    private func resultCard(isCompact: Bool) -> some View {
         VStack(spacing: 17) {
             Text(stateTitle)
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .modifier(AdaptiveFont(size: 17, weight: .semibold, design: .rounded))
                 .tracking(2.2)
                 .foregroundStyle(model.accelerationState == .completed && model.isNewAccelerationBest ? SpeedometerStyle.mint : SpeedometerStyle.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .contentTransition(.opacity)
 
             TimelineView(.animation(minimumInterval: 0.05, paused: model.accelerationState != .timing)) { context in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(String(format: "%.2f", model.accelerationElapsed(at: context.date)))
-                        .font(.system(size: 75, weight: .light, design: .rounded).monospacedDigit())
-                        .foregroundStyle(model.accelerationState == .completed ? SpeedometerStyle.accent : SpeedometerStyle.foreground)
-                        .contentTransition(.numericText())
-                        .minimumScaleFactor(0.65)
-                        .lineLimit(1)
-                    Text("s")
-                        .font(.system(size: 43, weight: .medium, design: .rounded))
-                        .foregroundStyle(model.accelerationState == .completed ? SpeedometerStyle.accent : SpeedometerStyle.foreground)
+                let time = String(format: "%.2f", model.accelerationElapsed(at: context.date))
+                let color = model.accelerationState == .completed ? SpeedometerStyle.accent : SpeedometerStyle.foreground
+                Group {
+                    if isCompact {
+                        VStack(spacing: -4) {
+                            Text(time)
+                                .modifier(AdaptiveFont(size: 75, weight: .light, design: .rounded).monospacedDigit())
+                                .foregroundStyle(color)
+                                .contentTransition(.numericText())
+                                .minimumScaleFactor(0.65)
+                                .lineLimit(1)
+                            Text("s")
+                                .modifier(AdaptiveFont(size: 43, weight: .medium, design: .rounded))
+                                .foregroundStyle(color)
+                        }
+                    } else {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(time)
+                                .modifier(AdaptiveFont(size: 75, weight: .light, design: .rounded).monospacedDigit())
+                                .foregroundStyle(color)
+                                .contentTransition(.numericText())
+                                .minimumScaleFactor(0.65)
+                                .lineLimit(1)
+                            Text("s")
+                                .modifier(AdaptiveFont(size: 43, weight: .medium, design: .rounded))
+                                .foregroundStyle(color)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Acceleration time")
-                .accessibilityValue("\(String(format: "%.2f", model.accelerationElapsed(at: context.date))) seconds")
+                .accessibilityValue("\(time) seconds")
                 .transaction { transaction in
                     transaction.animation = VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion)
                 }
             }
 
             Text(stateDetail)
-                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .modifier(AdaptiveFont(size: 14, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 27)
+        .padding(.vertical, 24)
         .frame(maxWidth: .infinity, minHeight: 226)
         .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
@@ -207,27 +276,18 @@ struct AccelerationTestView: View {
     }
 
     private var bestTimeCard: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("BEST")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .tracking(1.1)
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                Text(model.bestAccelerationTime.map(accelerationTimeText) ?? "—")
-                    .font(.system(size: 27, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(model.isNewAccelerationBest ? SpeedometerStyle.mint : SpeedometerStyle.foreground)
-                    .contentTransition(.numericText())
-            }
-            Spacer()
-            if model.isNewAccelerationBest {
-                Label("NEW BEST", systemImage: "sparkle")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .tracking(0.6)
-                    .foregroundStyle(SpeedometerStyle.mint)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(SpeedometerStyle.mint.opacity(0.1), in: Capsule())
-                    .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.96)), reduceMotion: reduceMotion))
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    bestTimeValue
+                    if model.isNewAccelerationBest { newBestBadge }
+                }
+            } else {
+                HStack(alignment: .center) {
+                    bestTimeValue
+                    Spacer(minLength: 8)
+                    if model.isNewAccelerationBest { newBestBadge }
+                }
             }
         }
         .padding(.horizontal, 20)
@@ -244,6 +304,32 @@ struct AccelerationTestView: View {
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.bestAccelerationTime)
     }
 
+    private var bestTimeValue: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("BEST")
+                .modifier(AdaptiveFont(size: 11, weight: .bold, design: .rounded))
+                .tracking(1.1)
+                .foregroundStyle(SpeedometerStyle.secondary)
+            Text(model.bestAccelerationTime.map(accelerationTimeText) ?? "—")
+                .modifier(AdaptiveFont(size: 27, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(model.isNewAccelerationBest ? SpeedometerStyle.mint : SpeedometerStyle.foreground)
+                .contentTransition(.numericText())
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var newBestBadge: some View {
+        Label("NEW BEST", systemImage: "sparkle")
+            .modifier(AdaptiveFont(size: 9, weight: .bold, design: .rounded))
+            .tracking(0.6)
+            .foregroundStyle(SpeedometerStyle.mint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(SpeedometerStyle.mint.opacity(0.1), in: Capsule())
+            .fixedSize(horizontal: false, vertical: true)
+            .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.96)), reduceMotion: reduceMotion))
+    }
+
     private var actionButtons: some View {
         VStack(spacing: 12) {
             Button {
@@ -252,11 +338,11 @@ struct AccelerationTestView: View {
                 }
             } label: {
                 Text(model.accelerationPrimaryActionTitle)
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.accentForeground)
                     .contentTransition(.opacity)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 60)
+                    .frame(minHeight: 60)
                     .background(SpeedometerStyle.accent, in: Capsule())
                     .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.25)).interactive(), in: .capsule)
                     .overlay { Capsule().stroke(SpeedometerStyle.foreground.opacity(0.32), lineWidth: 1) }
@@ -272,10 +358,10 @@ struct AccelerationTestView: View {
                 }
             } label: {
                 Text("Reset")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(minHeight: 52)
                     .glassEffect(.regular.interactive(), in: .capsule)
             }
             .buttonStyle(.plain)
@@ -288,52 +374,56 @@ struct AccelerationTestView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 13, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 13, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.accent)
                 Text("RECENT RUNS")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.2)
                     .foregroundStyle(SpeedometerStyle.secondary)
                 Spacer()
                 Text("\(model.accelerationAttempts.count)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                    .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(SpeedometerStyle.secondary)
             }
 
             ForEach(model.accelerationAttemptGroups) { group in
                 VStack(alignment: .leading, spacing: 9) {
-                    HStack {
-                        Text("0–\(displayedTarget(group.targetKmh)) \(speedUnit)")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(SpeedometerStyle.foreground)
-                        Spacer()
-                        Text(group.bestTime.map(accelerationTimeText) ?? "—")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(SpeedometerStyle.mint)
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("0–\(displayedTarget(group.targetKmh)) \(speedUnit)")
+                                .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(SpeedometerStyle.foreground)
+                            Text("BEST · \(group.bestTime.map(accelerationTimeText) ?? "—")")
+                                .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(SpeedometerStyle.mint)
+                        }
+                    } else {
+                        HStack {
+                            Text("0–\(displayedTarget(group.targetKmh)) \(speedUnit)")
+                                .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(SpeedometerStyle.foreground)
+                            Spacer()
+                            Text(group.bestTime.map(accelerationTimeText) ?? "—")
+                                .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(SpeedometerStyle.mint)
+                        }
                     }
 
                     ForEach(group.attempts) { attempt in
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(attempt.date.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .foregroundStyle(SpeedometerStyle.foreground.opacity(0.84))
-                                Text(accelerationTimeText(attempt.duration))
-                                    .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
-                                    .foregroundStyle(SpeedometerStyle.secondary)
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: 7) {
+                                attemptDetails(attempt)
+                                HStack {
+                                    Spacer()
+                                    deleteAttemptButton(attempt, targetKmh: group.targetKmh)
+                                }
                             }
-                            Spacer()
-                            Button(role: .destructive) {
-                                model.deleteAccelerationAttempt(attempt.id)
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(SpeedometerStyle.warning)
-                                    .frame(width: 34, height: 34)
-                                    .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.12)).interactive(), in: .circle)
+                        } else {
+                            HStack(spacing: 10) {
+                                attemptDetails(attempt)
+                                Spacer(minLength: 4)
+                                deleteAttemptButton(attempt, targetKmh: group.targetKmh)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Delete zero to \(displayedTarget(group.targetKmh)) \(spokenSpeedUnit) attempt")
                         }
                     }
                 }
@@ -347,6 +437,33 @@ struct AccelerationTestView: View {
         .padding(16)
         .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 21))
+    }
+
+    private func attemptDetails(_ attempt: AccelerationAttempt) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(attempt.date.formatted(date: .abbreviated, time: .shortened))
+                .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.foreground.opacity(0.84))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(accelerationTimeText(attempt.duration))
+                .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                .foregroundStyle(SpeedometerStyle.secondary)
+        }
+    }
+
+    private func deleteAttemptButton(_ attempt: AccelerationAttempt, targetKmh: Int) -> some View {
+        Button(role: .destructive) {
+            model.deleteAccelerationAttempt(attempt.id)
+        } label: {
+            Image(systemName: "trash")
+                .modifier(AdaptiveFont(size: 11, weight: .semibold))
+                .foregroundStyle(SpeedometerStyle.warning)
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.12)).interactive(), in: .circle)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Delete zero to \(displayedTarget(targetKmh)) \(spokenSpeedUnit) attempt")
     }
 
     private var stateTitle: String {

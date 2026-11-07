@@ -144,24 +144,28 @@ struct DashboardLayoutSettingsSection: View {
     @ObservedObject var layout: AppDashboardLayout
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 10) {
                 Image(systemName: "square.grid.2x2.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 15, weight: .semibold))
                     .foregroundStyle(SpeedometerStyle.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Dashboard layout")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                     Text("Choose modules and arrange their order")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                 }
             }
 
-            HStack(spacing: 8) {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible()), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2),
+                spacing: 8
+            ) {
                 ForEach(DashboardLayoutPreset.allCases) { preset in
                     presetButton(preset)
                 }
@@ -170,28 +174,50 @@ struct DashboardLayoutSettingsSection: View {
             NavigationLink {
                 DashboardLayoutEditor(layout: layout)
             } label: {
-                HStack(spacing: 9) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Edit modules")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    Spacer()
-                    Text("\(layout.visibleOptionalModules.count) optional on")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.secondary)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(SpeedometerStyle.secondary)
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 9) {
+                                Image(systemName: "slider.horizontal.3")
+                                    .modifier(AdaptiveFont(size: 12, weight: .semibold))
+                                Text("Edit modules")
+                                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .modifier(AdaptiveFont(size: 10, weight: .semibold))
+                                    .foregroundStyle(SpeedometerStyle.secondary)
+                            }
+                            Text("\(layout.visibleOptionalModules.count) optional on")
+                                .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(SpeedometerStyle.secondary)
+                                .padding(.leading, 21)
+                        }
+                    } else {
+                        HStack(spacing: 9) {
+                            Image(systemName: "slider.horizontal.3")
+                                .modifier(AdaptiveFont(size: 12, weight: .semibold))
+                            Text("Edit modules")
+                                .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text("\(layout.visibleOptionalModules.count) optional on")
+                                .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(SpeedometerStyle.secondary)
+                            Image(systemName: "chevron.right")
+                                .modifier(AdaptiveFont(size: 10, weight: .semibold))
+                                .foregroundStyle(SpeedometerStyle.secondary)
+                        }
+                    }
                 }
                 .foregroundStyle(SpeedometerStyle.accent)
                 .padding(.horizontal, 13)
-                .frame(height: 42)
+                .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 10 : 0)
+                .frame(minHeight: 44)
                 .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
             }
             .buttonStyle(.plain)
 
             Text("Live speed and drive controls are always included.")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(15)
@@ -206,19 +232,19 @@ struct DashboardLayoutSettingsSection: View {
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: preset == .full ? "rectangle.stack" : "rectangle.compress.vertical")
-                    .font(.system(size: 12, weight: .semibold))
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold))
                 Text(preset.title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
                 Spacer(minLength: 0)
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .modifier(AdaptiveFont(size: 11, weight: .semibold))
                 }
             }
             .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
             .padding(.horizontal, 11)
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .frame(minHeight: 44)
             .background(isSelected ? SpeedometerStyle.accent.opacity(0.16) : SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
@@ -234,6 +260,7 @@ private struct DashboardLayoutEditor: View {
     @ObservedObject var layout: AppDashboardLayout
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         List {
@@ -258,6 +285,7 @@ private struct DashboardLayoutEditor: View {
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: layout.visibleOptionalModules)
         .navigationTitle("Dashboard layout")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 EditButton()
@@ -276,13 +304,24 @@ private struct DashboardLayoutEditor: View {
                 moduleLabel(module)
             }
             .tint(SpeedometerStyle.accent)
+            .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 6 : 0)
             .accessibilityLabel("Show \(module.title)")
+        } else if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 7) {
+                moduleLabel(module)
+                Text("ALWAYS ON")
+                    .modifier(AdaptiveFont(size: 8, weight: .bold, design: .rounded))
+                    .tracking(0.7)
+                    .foregroundStyle(SpeedometerStyle.accent)
+                    .padding(.leading, 35)
+            }
+            .accessibilityElement(children: .combine)
         } else {
             HStack(spacing: 12) {
                 moduleLabel(module)
                 Spacer(minLength: 8)
                 Text("ALWAYS ON")
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 8, weight: .bold, design: .rounded))
                     .tracking(0.7)
                     .foregroundStyle(SpeedometerStyle.accent)
             }
@@ -293,18 +332,17 @@ private struct DashboardLayoutEditor: View {
     private func moduleLabel(_ module: DashboardModule) -> some View {
         HStack(spacing: 11) {
             Image(systemName: module.symbol)
-                .font(.system(size: 14, weight: .semibold))
+                .modifier(AdaptiveFont(size: 14, weight: .semibold))
                 .foregroundStyle(SpeedometerStyle.accent)
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: 3) {
                 Text(module.title)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.foreground)
                 Text(module.detail)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
