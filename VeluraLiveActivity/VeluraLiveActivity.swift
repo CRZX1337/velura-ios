@@ -8,6 +8,7 @@ public struct VeluraDriveActivityAttributes: ActivityAttributes {
             case good
             case searching
             case stale
+            case unreliable
             case unavailable
         }
 
@@ -325,7 +326,7 @@ private struct LockScreenDriveActivityView: View {
         switch state.gpsFreshness {
         case .good: colors.mint
         case .searching: colors.accent
-        case .stale, .unavailable: colors.warning
+        case .stale, .unavailable, .unreliable: colors.warning
         }
     }
 
@@ -334,6 +335,7 @@ private struct LockScreenDriveActivityView: View {
         case .good: "GPS LOCKED"
         case .searching: "SEARCHING FOR GPS"
         case .stale: "GPS SIGNAL STALE"
+        case .unreliable: "GPS DATA UNRELIABLE"
         case .unavailable: "GPS UNAVAILABLE"
         }
     }
@@ -539,7 +541,7 @@ private struct DynamicIslandDriveActivityView {
         switch state.gpsFreshness {
         case .good: colors.mint
         case .searching: colors.accent
-        case .stale, .unavailable: colors.warning
+        case .stale, .unavailable, .unreliable: colors.warning
         }
     }
 
@@ -548,6 +550,7 @@ private struct DynamicIslandDriveActivityView {
         case .good: "GPS LOCKED"
         case .searching: "SEARCHING FOR GPS"
         case .stale: "GPS SIGNAL STALE"
+        case .unreliable: "GPS DATA UNRELIABLE"
         case .unavailable: "GPS UNAVAILABLE"
         }
     }

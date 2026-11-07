@@ -227,6 +227,13 @@ struct SpeedDashboardView: View {
         if model.gpsStatusDetail == "Allow location access in Settings" { return "Open Settings" }
         if model.gpsStatusDetail == "Start a session to connect GPS" { return "Stand by" }
         if model.locationUpdateFailed { return "Unavailable" }
+        if let issue = model.gpsDataQualityIssue {
+            switch issue {
+            case .stale: return "Stale · searching"
+            case .inaccurate: return "Poor accuracy"
+            case .implausible: return "Outlier ignored"
+            }
+        }
         if model.isGPSFixStale { return "Stale · searching" }
         if model.isSessionActive { return "Searching" }
         return "Ready"

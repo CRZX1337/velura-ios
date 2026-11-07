@@ -9,6 +9,7 @@ public struct VeluraDriveActivityAttributes: ActivityAttributes {
             case good
             case searching
             case stale
+            case unreliable
             case unavailable
         }
 

@@ -42,6 +42,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     @Published private(set) var hasGPSFix = false
     @Published private(set) var lastValidGPSFixAt: Date?
     @Published private(set) var locationUpdateFailed = false
+    @Published private(set) var gpsDataQualityIssue: GPSLocationIssue?
     @Published private(set) var accelerationInterruptedForGPS = false
     @Published private(set) var isSessionActive = false
     @Published private(set) var isOverspeedWarningActive = false
@@ -102,7 +103,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private var hasCurrentGPSFix: Bool {
-        guard isSessionActive, hasGPSFix, let lastValidGPSFixAt else { return false }
+        guard isSessionActive,
+              hasGPSFix,
+              gpsDataQualityIssue == nil,
+              let lastValidGPSFixAt else { return false }
         return Date().timeIntervalSince(lastValidGPSFixAt) <= gpsFixStaleAfter
     }
 
@@ -115,6 +119,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             return "GPS STANDBY"
         case .authorizedAlways, .authorizedWhenInUse:
             if locationUpdateFailed { return "GPS UNAVAILABLE" }
+            if let gpsDataQualityIssue { return gpsDataQualityIssue.title }
             if isGPSFixStale { return "GPS STALE" }
             return isSessionActive ? "SEARCHING FOR GPS" : "GPS READY"
         @unknown default:
@@ -131,6 +136,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             return "Start a session to connect GPS"
         case .authorizedAlways, .authorizedWhenInUse:
             if locationUpdateFailed { return "Location updates failed · retrying" }
+            if let gpsDataQualityIssue { return gpsDataQualityIssue.detail }
             if isGPSFixStale { return "Last GPS fix is stale · searching" }
             return isSessionActive ? "Searching for a fresh GPS fix" : "Ready when you are"
         @unknown default:
@@ -150,6 +156,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         let gpsFreshness: VeluraDriveActivityAttributes.ContentState.GPSFreshness
         if authorizationStatus == .denied || authorizationStatus == .restricted || locationUpdateFailed {
             gpsFreshness = .unavailable
+        } else if gpsDataQualityIssue == .inaccurate || gpsDataQualityIssue == .implausible {
+            gpsFreshness = .unreliable
+        } else if gpsDataQualityIssue == .stale {
+            gpsFreshness = .stale
         } else if hasCurrentGPSFix {
             gpsFreshness = .good
         } else if lastValidGPSFixAt != nil {
@@ -420,6 +430,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         hasGPSFix = false
         lastValidGPSFixAt = nil
         locationUpdateFailed = false
+        gpsDataQualityIssue = nil
         speedKmh = 0
         updateOverspeedWarning(triggerHaptic: false)
         previousLocation = nil
@@ -499,6 +510,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         hasGPSFix = false
         lastValidGPSFixAt = nil
         locationUpdateFailed = false
+        gpsDataQualityIssue = nil
         updateOverspeedWarning(triggerHaptic: false)
     }
 
@@ -508,6 +520,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             hasGPSFix = false
             lastValidGPSFixAt = nil
             locationUpdateFailed = false
+            gpsDataQualityIssue = nil
             speedKmh = 0
             previousLocation = nil
             interruptAccelerationTestForGPSIssue()
@@ -552,11 +565,15 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         guard isSessionActive else { return }
         let receivedAt = Date()
         var receivedValidLocation = false
+        let filter = GPSLocationFilter()
 
-        for location in locations where location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 50 {
-            let fixAge = receivedAt.timeIntervalSince(location.timestamp)
-            guard fixAge >= -1 && fixAge <= gpsFixStaleAfter else { continue }
+        for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) {
             guard lastProcessedLocationTimestamp.map({ location.timestamp > $0 }) ?? true else { continue }
+
+            if let issue = filter.issue(for: location, receivedAt: receivedAt, previousLocation: previousLocation) {
+                rejectGPSLocationSample(issue, at: receivedAt)
+                continue
+            }
 
             if pendingGapStartAt == nil,
                let previousLocation,
@@ -573,24 +590,20 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             hasGPSFix = true
             lastValidGPSFixAt = receivedAt
             locationUpdateFailed = false
+            gpsDataQualityIssue = nil
             lastValidLocation = location
             recordRoutePoint(location)
 
-            if location.speed >= 0 {
-                let measuredSpeed = max(0, location.speed * 3.6)
-                speedKmh = measuredSpeed < 1.0 ? 0 : measuredSpeed
-                topSpeedKmh = max(topSpeedKmh, speedKmh)
-                updateAccelerationTest(speedKmh: speedKmh, at: location.timestamp)
-                updateOverspeedWarning(triggerHaptic: true)
-            } else {
-                speedKmh = 0
-                updateOverspeedWarning(triggerHaptic: false)
-            }
+            let measuredSpeed = max(0, location.speed * 3.6)
+            speedKmh = measuredSpeed < 1.0 ? 0 : measuredSpeed
+            topSpeedKmh = max(topSpeedKmh, speedKmh)
+            updateAccelerationTest(speedKmh: speedKmh, at: location.timestamp)
+            updateOverspeedWarning(triggerHaptic: true)
 
             if let previousLocation {
                 let distance = location.distance(from: previousLocation)
                 let timeDelta = location.timestamp.timeIntervalSince(previousLocation.timestamp)
-                if distance < 150 && timeDelta > 0 && timeDelta <= gpsFixStaleAfter {
+                if timeDelta > 0 && timeDelta <= gpsFixStaleAfter {
                     distanceKm += distance / 1_000
                 }
             }
@@ -616,6 +629,18 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         updateDriveLiveActivity()
         updateOverspeedWarning(triggerHaptic: false)
+    }
+
+    private func rejectGPSLocationSample(_ issue: GPSLocationIssue, at date: Date) {
+        gpsDataQualityIssue = issue
+        hasGPSFix = false
+        speedKmh = 0
+        previousLocation = nil
+        pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? date
+        interruptAccelerationTestForGPSIssue()
+        updateOverspeedWarning(triggerHaptic: false)
+        persistActiveDrive(force: true)
+        updateDriveLiveActivity(at: date)
     }
 
     private func updateOverspeedWarning(triggerHaptic: Bool) {
@@ -676,6 +701,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         hasGPSFix = false
         lastValidGPSFixAt = nil
         locationUpdateFailed = false
+        gpsDataQualityIssue = nil
         horizontalAccuracy = -1
         speedKmh = 0
         if pendingAccelerationArm {
@@ -715,7 +741,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func recordRoutePoint(_ location: CLLocation, force: Bool = false) {
-        guard CLLocationCoordinate2DIsValid(location.coordinate), location.horizontalAccuracy <= 50 else { return }
+        guard CLLocationCoordinate2DIsValid(location.coordinate),
+              location.horizontalAccuracy.isFinite,
+              location.horizontalAccuracy >= 0,
+              location.horizontalAccuracy <= 35 else { return }
 
         if let lastPoint = routeCoordinates.last, lastPoint.segmentIndex == routeSegmentIndex {
             let previous = CLLocation(latitude: lastPoint.latitude, longitude: lastPoint.longitude)
