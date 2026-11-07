@@ -233,12 +233,10 @@ struct SpeedDashboardView: View {
     private var sessionControls: some View {
         VStack(spacing: 12) {
             Button {
-                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                    if model.isSessionActive {
-                        model.pauseSession()
-                    } else {
-                        model.startSession()
-                    }
+                if model.isSessionActive {
+                    model.pauseSession()
+                } else {
+                    model.startSession()
                 }
             } label: {
                 HStack(spacing: 12) {
@@ -249,10 +247,10 @@ struct SpeedDashboardView: View {
                     Text(primaryActionTitle)
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
-                        .contentTransition(.opacity)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 62)
+                .contentShape(Rectangle())
                 .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.23)).interactive(), in: .capsule)
             }
             .buttonStyle(.plain)
@@ -260,24 +258,23 @@ struct SpeedDashboardView: View {
 
             if model.hasUnfinishedSession {
                 Button {
-                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                        model.finishSession()
-                    }
+                    model.finishSession()
                 } label: {
                     Text("Finish")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 49)
+                        .contentShape(Rectangle())
                         .glassEffect(.regular.interactive(), in: .capsule)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Finish and save this drive")
-                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
             }
         }
-        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: model.isSessionActive)
-        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: model.hasUnfinishedSession)
+        .transaction { transaction in
+            transaction.animation = nil
+        }
     }
 
     private var primaryActionTitle: String {
