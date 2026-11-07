@@ -9,6 +9,7 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
     case graphite
     case forest
     case ember
+    case aurora
 
     var id: String { rawValue }
 
@@ -19,6 +20,7 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .graphite: "Graphite"
         case .forest: "Forest"
         case .ember: "Ember"
+        case .aurora: "Aurora"
         }
     }
 
@@ -29,6 +31,7 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .graphite: Color(red: 0.055, green: 0.058, blue: 0.067)
         case .forest: Color(red: 0.027, green: 0.078, blue: 0.059)
         case .ember: Color(red: 0.078, green: 0.067, blue: 0.063)
+        case .aurora: Color(red: 0.045, green: 0.043, blue: 0.105)
         }
     }
 
@@ -39,6 +42,7 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .graphite: Color(red: 0.72, green: 0.73, blue: 0.76)
         case .forest: Color(red: 0.66, green: 0.76, blue: 0.69)
         case .ember: Color(red: 0.76, green: 0.70, blue: 0.63)
+        case .aurora: Color(red: 0.72, green: 0.70, blue: 0.85)
         }
     }
 
@@ -49,6 +53,7 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .graphite: Color(red: 1.0, green: 0.69, blue: 0.28)
         case .forest: Color(red: 0.30, green: 0.82, blue: 0.52)
         case .ember: Color(red: 0.83, green: 0.48, blue: 0.27)
+        case .aurora: Color(red: 0.57, green: 0.52, blue: 0.99)
         }
     }
 
@@ -59,6 +64,7 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .graphite: Color(red: 0.52, green: 0.88, blue: 0.65)
         case .forest: Color(red: 0.70, green: 0.88, blue: 0.58)
         case .ember: Color(red: 0.48, green: 0.79, blue: 0.67)
+        case .aurora: Color(red: 0.48, green: 0.91, blue: 0.80)
         }
     }
 
@@ -67,6 +73,7 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight, .ocean, .graphite: .white
         case .forest: Color(red: 0.92, green: 0.96, blue: 0.93)
         case .ember: Color(red: 0.96, green: 0.93, blue: 0.87)
+        case .aurora: Color(red: 0.95, green: 0.94, blue: 1.0)
         }
     }
 
@@ -77,6 +84,7 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .graphite: Color(red: 0.15, green: 0.10, blue: 0.025)
         case .forest: Color(red: 0.035, green: 0.16, blue: 0.095)
         case .ember: Color(red: 0.16, green: 0.085, blue: 0.045)
+        case .aurora: Color(red: 0.10, green: 0.08, blue: 0.24)
         }
     }
 
@@ -98,6 +106,7 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
     case twinRing
     case fullCircle
     case verticalBar
+    case segmentedRing
 
     var id: String { rawValue }
 
@@ -111,6 +120,7 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         case .twinRing: "Twin ring"
         case .fullCircle: "Full circle"
         case .verticalBar: "Vertical bar"
+        case .segmentedRing: "LED ring"
         }
     }
 
@@ -119,11 +129,9 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         case .classic: 10
         case .minimal: 7
         case .sport: 13
-        case .segmentedLED: 8
-        case .digitalHUD: 8
-        case .twinRing: 8
+        case .segmentedLED, .digitalHUD, .twinRing, .verticalBar: 8
         case .fullCircle: 10
-        case .verticalBar: 8
+        case .segmentedRing: 9
         }
     }
 
@@ -133,7 +141,7 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         case .minimal: 12
         case .sport: 64
         case .segmentedLED: 48
-        case .digitalHUD, .twinRing, .fullCircle, .verticalBar: 0
+        case .digitalHUD, .twinRing, .fullCircle, .verticalBar, .segmentedRing: 0
         }
     }
 
@@ -142,7 +150,7 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         case .classic: 10
         case .minimal: 6
         case .sport, .segmentedLED: 8
-        case .digitalHUD, .twinRing, .fullCircle, .verticalBar: 1
+        case .digitalHUD, .twinRing, .fullCircle, .verticalBar, .segmentedRing: 1
         }
     }
 
@@ -150,14 +158,14 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         switch self {
         case .classic, .sport: 5
         case .minimal, .segmentedLED, .twinRing: 3
-        case .digitalHUD, .fullCircle, .verticalBar: 0
+        case .digitalHUD, .fullCircle, .verticalBar, .segmentedRing: 0
         }
     }
 
     var showsTicks: Bool {
         switch self {
         case .classic, .sport: true
-        case .minimal, .segmentedLED, .digitalHUD, .twinRing, .fullCircle, .verticalBar: false
+        case .minimal, .segmentedLED, .digitalHUD, .twinRing, .fullCircle, .verticalBar, .segmentedRing: false
         }
     }
 }

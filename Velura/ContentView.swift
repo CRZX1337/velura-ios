@@ -469,6 +469,8 @@ struct ContentView: View {
             classicDialPreview(style)
         case .segmentedLED:
             segmentedDialPreview
+        case .segmentedRing:
+            segmentedRingDialPreview
         case .digitalHUD:
             digitalDialPreview
         case .twinRing:
@@ -558,6 +560,22 @@ struct ContentView: View {
         }
         .frame(width: 60, height: 45)
         .offset(y: 5)
+    }
+
+    private var segmentedRingDialPreview: some View {
+        ZStack {
+            SegmentedGaugeRing(
+                progress: gaugePreviewProgress,
+                activeColor: SpeedometerStyle.accent,
+                inactiveColor: SpeedometerStyle.foreground.opacity(0.14),
+                segmentCount: 32,
+                lineWidth: 3
+            )
+            Text(String(format: "%.0f", displayedSpeed))
+                .modifier(AdaptiveFont(size: 8, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(SpeedometerStyle.foreground)
+        }
+        .frame(width: 42, height: 42)
     }
 
     private var digitalDialPreview: some View {
@@ -1028,6 +1046,18 @@ struct SpeedometerGauge: View {
                     .position(center)
                     .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
                     .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
+            } else if dialStyle == .segmentedRing {
+                SegmentedGaugeRing(
+                    progress: progress,
+                    activeColor: gaugeColor,
+                    inactiveColor: SpeedometerStyle.foreground.opacity(0.15),
+                    segmentCount: 72,
+                    lineWidth: dialStyle.trackWidth
+                )
+                .frame(width: diameter, height: diameter)
+                .position(center)
+                .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+                .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
             } else if dialStyle == .segmentedLED {
                 SegmentedGaugeArc(
                     progress: progress,
@@ -1227,6 +1257,39 @@ private struct GaugeArc: Shape {
             clockwise: false
         )
         return path
+    }
+}
+
+private struct SegmentedGaugeRing: View {
+    let progress: Double
+    let activeColor: Color
+    let inactiveColor: Color
+    let segmentCount: Int
+    let lineWidth: CGFloat
+
+    var body: some View {
+        Canvas { context, size in
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let radius = min(size.width, size.height) * 0.43
+            let segmentStep = 360.0 / Double(segmentCount)
+            let segmentSweep = segmentStep * 0.66
+            let boundedProgress = min(max(progress, 0), 1)
+
+            for index in 0..<segmentCount {
+                let start = -90 + segmentStep * Double(index)
+                var segment = Path()
+                segment.addArc(
+                    center: center,
+                    radius: radius,
+                    startAngle: .degrees(start),
+                    endAngle: .degrees(start + segmentSweep),
+                    clockwise: false
+                )
+                let color = Double(index) / Double(segmentCount) < boundedProgress ? activeColor : inactiveColor
+                context.stroke(segment, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
