@@ -6,14 +6,16 @@ struct FirstLaunchSetupView: View {
     @ObservedObject var model: SpeedometerModel
     let onContinue: () -> Void
 
+    @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasAppeared = false
 
-    private let background = Color(red: 0.012, green: 0.035, blue: 0.060)
-    private let cyan = Color(red: 0.22, green: 0.83, blue: 0.98)
-    private let secondary = Color(red: 0.66, green: 0.75, blue: 0.84)
+    private var background: Color { appearance.background }
+    private var foreground: Color { appearance.foreground }
+    private var cyan: Color { appearance.accent }
+    private var secondary: Color { appearance.secondary }
 
     private var isLocationAuthorized: Bool {
         model.authorizationStatus == .authorizedAlways || model.authorizationStatus == .authorizedWhenInUse
@@ -63,7 +65,7 @@ struct FirstLaunchSetupView: View {
         ZStack {
             background.ignoresSafeArea()
             LinearGradient(
-                colors: [Color(red: 0.018, green: 0.085, blue: 0.13), background.opacity(0.15), background],
+                colors: [cyan.opacity(0.14), background.opacity(0.65), background],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -112,7 +114,7 @@ struct FirstLaunchSetupView: View {
                 .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: hasAppeared)
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(appearance.preferredColorScheme)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
         .onAppear {
             model.refreshLocationAuthorizationStatus()
@@ -137,7 +139,7 @@ struct FirstLaunchSetupView: View {
             Text("VELURA")
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .tracking(6)
-                .foregroundStyle(.white.opacity(0.94))
+                .foregroundStyle(foreground.opacity(0.94))
                 .padding(.leading, 6)
         }
         .frame(maxWidth: .infinity)
@@ -155,7 +157,7 @@ struct FirstLaunchSetupView: View {
             Text("Welcome to Velura")
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .tracking(-0.6)
-                .foregroundStyle(.white)
+                .foregroundStyle(foreground)
                 .minimumScaleFactor(0.78)
                 .lineLimit(1)
             Text("Set up your speedometer in seconds.")
@@ -187,7 +189,7 @@ struct FirstLaunchSetupView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(foreground)
                 Text(detail)
                     .font(.system(size: 13, weight: .regular, design: .rounded))
                     .foregroundStyle(secondary)
@@ -197,11 +199,11 @@ struct FirstLaunchSetupView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
+        .background(foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 23))
         .overlay {
             RoundedRectangle(cornerRadius: 23, style: .continuous)
-                .stroke(.white.opacity(0.075), lineWidth: 1)
+                .stroke(foreground.opacity(0.075), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
     }
@@ -233,7 +235,7 @@ struct FirstLaunchSetupView: View {
                 if let locationDetail {
                     Text(locationTitle)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(foreground)
                     Text(locationDetail)
                         .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundStyle(secondary)
@@ -250,7 +252,7 @@ struct FirstLaunchSetupView: View {
             Button(action: handlePrimaryAction) {
                 Text(primaryActionTitle)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.015, green: 0.10, blue: 0.15))
+                    .foregroundStyle(appearance.accentForeground)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
                     .background(
@@ -265,13 +267,13 @@ struct FirstLaunchSetupView: View {
             Button(action: onContinue) {
                 Text("Continue without location")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.68, green: 0.79, blue: 0.88))
+                    .foregroundStyle(secondary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)
-                    .background(.white.opacity(0.025), in: Capsule())
+                    .background(foreground.opacity(0.025), in: Capsule())
                     .glassEffect(.regular.interactive(), in: .capsule)
                     .overlay {
-                        Capsule().stroke(.white.opacity(0.08), lineWidth: 1)
+                        Capsule().stroke(foreground.opacity(0.08), lineWidth: 1)
                     }
             }
             .buttonStyle(.plain)
@@ -279,7 +281,7 @@ struct FirstLaunchSetupView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+        .background(foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 25))
         .overlay {
             RoundedRectangle(cornerRadius: 25, style: .continuous)

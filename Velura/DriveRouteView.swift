@@ -114,7 +114,7 @@ struct DriveRouteView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .preferredColorScheme(appearance.theme.colorScheme)
+        .preferredColorScheme(appearance.preferredColorScheme)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .tabBar)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: routeCoordinates.count >= 2)

@@ -175,7 +175,7 @@ struct DrivingInsightsView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .tabBar)
-        .preferredColorScheme(appearance.theme.colorScheme)
+        .preferredColorScheme(appearance.preferredColorScheme)
         .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: selectedPeriod)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: store.drives.count)
     }
@@ -235,7 +235,7 @@ struct DrivingInsightsView: View {
                 } label: {
                     Text(period.rawValue)
                         .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isSelected ? AppAppearance.shared.theme.accentForeground : SpeedometerStyle.secondary)
+                        .foregroundStyle(isSelected ? SpeedometerStyle.accentForeground : SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 44)
                         .background {

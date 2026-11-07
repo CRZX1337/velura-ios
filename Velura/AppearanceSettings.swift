@@ -7,6 +7,8 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
     case midnight
     case ocean
     case graphite
+    case forest
+    case ember
 
     var id: String { rawValue }
 
@@ -15,6 +17,8 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: "Midnight"
         case .ocean: "Ocean"
         case .graphite: "Graphite"
+        case .forest: "Forest"
+        case .ember: "Ember"
         }
     }
 
@@ -23,6 +27,8 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: Color(red: 0.025, green: 0.043, blue: 0.067)
         case .ocean: Color(red: 0.018, green: 0.070, blue: 0.078)
         case .graphite: Color(red: 0.055, green: 0.058, blue: 0.067)
+        case .forest: Color(red: 0.027, green: 0.078, blue: 0.059)
+        case .ember: Color(red: 0.078, green: 0.067, blue: 0.063)
         }
     }
 
@@ -31,6 +37,8 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: Color(red: 0.63, green: 0.70, blue: 0.77)
         case .ocean: Color(red: 0.66, green: 0.77, blue: 0.75)
         case .graphite: Color(red: 0.72, green: 0.73, blue: 0.76)
+        case .forest: Color(red: 0.66, green: 0.76, blue: 0.69)
+        case .ember: Color(red: 0.76, green: 0.70, blue: 0.63)
         }
     }
 
@@ -39,6 +47,8 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: Color(red: 0.27, green: 0.79, blue: 0.98)
         case .ocean: Color(red: 0.24, green: 0.86, blue: 0.75)
         case .graphite: Color(red: 1.0, green: 0.69, blue: 0.28)
+        case .forest: Color(red: 0.30, green: 0.82, blue: 0.52)
+        case .ember: Color(red: 0.83, green: 0.48, blue: 0.27)
         }
     }
 
@@ -47,16 +57,26 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         case .midnight: Color(red: 0.34, green: 0.91, blue: 0.73)
         case .ocean: Color(red: 0.48, green: 0.92, blue: 0.70)
         case .graphite: Color(red: 0.52, green: 0.88, blue: 0.65)
+        case .forest: Color(red: 0.70, green: 0.88, blue: 0.58)
+        case .ember: Color(red: 0.48, green: 0.79, blue: 0.67)
         }
     }
 
-    var foreground: Color { .white }
+    var foreground: Color {
+        switch self {
+        case .midnight, .ocean, .graphite: .white
+        case .forest: Color(red: 0.92, green: 0.96, blue: 0.93)
+        case .ember: Color(red: 0.96, green: 0.93, blue: 0.87)
+        }
+    }
 
     var accentForeground: Color {
         switch self {
         case .midnight: .white
         case .ocean: Color(red: 0.015, green: 0.14, blue: 0.13)
         case .graphite: Color(red: 0.15, green: 0.10, blue: 0.025)
+        case .forest: Color(red: 0.035, green: 0.16, blue: 0.095)
+        case .ember: Color(red: 0.16, green: 0.085, blue: 0.045)
         }
     }
 
@@ -144,6 +164,24 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppAppearanceMode: String, CaseIterable, Identifiable {
+    case palette
+    case light
+    case dark
+    case system
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .palette: "Palette"
+        case .light: "Light"
+        case .dark: "Dark"
+        case .system: "System"
+        }
+    }
+}
+
 final class AppAppearance: ObservableObject {
     static let shared = AppAppearance()
 
@@ -151,25 +189,113 @@ final class AppAppearance: ObservableObject {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: Self.themeStorageKey) }
     }
 
+    @Published var appearanceMode: AppAppearanceMode {
+        didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: Self.appearanceModeStorageKey) }
+    }
+
     @Published var dialStyle: SpeedometerDialStyle {
         didSet { UserDefaults.standard.set(dialStyle.rawValue, forKey: Self.dialStorageKey) }
     }
 
     private static let themeStorageKey = "speedometer.appearance.theme"
+    private static let appearanceModeStorageKey = "speedometer.appearance.mode"
     private static let dialStorageKey = "speedometer.appearance.dialStyle"
     private static let legacyCustomColorsStorageKey = "speedometer.appearance.customColors"
 
     private init() {
         let defaults = UserDefaults.standard
         let savedTheme = defaults.string(forKey: Self.themeStorageKey)
+        let savedAppearanceMode = AppAppearanceMode(rawValue: defaults.string(forKey: Self.appearanceModeStorageKey) ?? "") ?? .palette
+        let restoredAppearanceMode = savedTheme == "daylight" && savedAppearanceMode == .palette
+            ? AppAppearanceMode.light
+            : savedAppearanceMode
+
         if savedTheme == "custom" {
+            defaults.set(AppearanceTheme.midnight.rawValue, forKey: Self.themeStorageKey)
+            theme = .midnight
+        } else if savedTheme == "daylight" {
             defaults.set(AppearanceTheme.midnight.rawValue, forKey: Self.themeStorageKey)
             theme = .midnight
         } else {
             theme = AppearanceTheme(rawValue: savedTheme ?? "") ?? .midnight
         }
+
+        appearanceMode = restoredAppearanceMode
+        if savedTheme == "daylight" {
+            defaults.set(restoredAppearanceMode.rawValue, forKey: Self.appearanceModeStorageKey)
+        }
         dialStyle = SpeedometerDialStyle(rawValue: defaults.string(forKey: Self.dialStorageKey) ?? "") ?? .classic
         defaults.removeObject(forKey: Self.legacyCustomColorsStorageKey)
+    }
+
+    var preferredColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case .palette: theme.colorScheme
+        case .light: .light
+        case .dark: .dark
+        case .system: nil
+        }
+    }
+
+    var background: Color {
+        switch appearanceMode {
+        case .palette: theme.background
+        case .light: .white
+        case .dark: Color(red: 0.035, green: 0.039, blue: 0.047)
+        case .system: Color(uiColor: .systemBackground)
+        }
+    }
+
+    var foreground: Color {
+        switch appearanceMode {
+        case .palette: theme.foreground
+        case .light: Color(red: 0.10, green: 0.12, blue: 0.15)
+        case .dark: .white
+        case .system: .primary
+        }
+    }
+
+    var secondary: Color {
+        switch appearanceMode {
+        case .palette: theme.secondary
+        case .light: Color(red: 0.34, green: 0.37, blue: 0.41)
+        case .dark: Color(red: 0.66, green: 0.69, blue: 0.73)
+        case .system: .secondary
+        }
+    }
+
+    var accent: Color {
+        switch appearanceMode {
+        case .palette: theme.accent
+        case .light: Color(red: 0.10, green: 0.38, blue: 0.75)
+        case .dark: Color(red: 0.29, green: 0.57, blue: 0.98)
+        case .system: Color(uiColor: .systemBlue)
+        }
+    }
+
+    var accentForeground: Color {
+        switch appearanceMode {
+        case .palette: theme.accentForeground
+        case .light, .dark, .system: .white
+        }
+    }
+
+    var mint: Color {
+        switch appearanceMode {
+        case .palette: theme.mint
+        case .light: Color(red: 0.10, green: 0.46, blue: 0.33)
+        case .dark: Color(red: 0.32, green: 0.84, blue: 0.63)
+        case .system: Color(uiColor: .systemGreen)
+        }
+    }
+
+    var warning: Color {
+        switch appearanceMode {
+        case .palette: theme.warning
+        case .light: Color(red: 0.72, green: 0.16, blue: 0.13)
+        case .dark: Color(red: 1.0, green: 0.36, blue: 0.33)
+        case .system: Color(uiColor: .systemRed)
+        }
     }
 }
 

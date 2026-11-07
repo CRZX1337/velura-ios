@@ -184,7 +184,7 @@ struct DriveHistoryView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .tabBar)
-        .preferredColorScheme(appearance.theme.colorScheme)
+        .preferredColorScheme(appearance.preferredColorScheme)
         .navigationDestination(isPresented: $showingInsights) {
             DrivingInsightsView()
         }
@@ -828,7 +828,7 @@ private struct DriveDetailView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .tabBar)
-        .preferredColorScheme(appearance.theme.colorScheme)
+        .preferredColorScheme(appearance.preferredColorScheme)
     }
 
     private var detailDivider: some View {

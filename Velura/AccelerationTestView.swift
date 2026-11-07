@@ -51,7 +51,7 @@ struct AccelerationTestView: View {
                 }
             }
         }
-        .preferredColorScheme(appearance.theme.colorScheme)
+        .preferredColorScheme(appearance.preferredColorScheme)
         .toolbar(.visible, for: .tabBar)
     }
 
