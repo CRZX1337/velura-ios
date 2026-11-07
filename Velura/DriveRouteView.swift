@@ -29,6 +29,25 @@ struct DriveRouteView: View {
         routeCoordinates.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
 
+    private var routePointSegments: [[DriveRoutePoint]] {
+        var segments: [[DriveRoutePoint]] = []
+        var currentSegmentIndex: Int?
+        for point in routeCoordinates {
+            if currentSegmentIndex != point.segmentIndex {
+                segments.append([])
+                currentSegmentIndex = point.segmentIndex
+            }
+            segments[segments.count - 1].append(point)
+        }
+        return segments
+    }
+
+    private var routeSegments: [[CLLocationCoordinate2D]] {
+        routePointSegments.map { segment in
+            segment.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+        }
+    }
+
     private var displayedDistance: Double {
         usesMiles ? drive.distanceKm * 0.621371 : drive.distanceKm
     }
@@ -141,8 +160,13 @@ struct DriveRouteView: View {
 
     private var routeMap: some View {
         Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
-            MapPolyline(coordinates: coordinates)
-                .stroke(SpeedometerStyle.accent, lineWidth: 5)
+            ForEach(routeSegments.indices, id: \.self) { index in
+                let segment = routeSegments[index]
+                if segment.count > 1 {
+                    MapPolyline(coordinates: segment)
+                        .stroke(SpeedometerStyle.accent, lineWidth: 5)
+                }
+            }
 
             if let start = coordinates.first {
                 Annotation("Start", coordinate: start, anchor: .center) {
@@ -273,13 +297,16 @@ struct DriveRouteView: View {
         do {
             let mapImage = try await makeRouteImage()
             let date = drive.date.formatted(date: .long, time: .shortened)
-            let message = [
+            var messageLines = [
                 "Velura drive · \(date)",
                 "Distance: \(String(format: "%.1f", displayedDistance)) \(distanceUnit)",
                 "Duration: \(routeDuration(drive.duration))",
                 "Top speed: \(Int(displayedTopSpeed.rounded())) \(speedUnit)"
-            ].joined(separator: "\n")
-            shareContent = RouteShareContent(message: message, mapImage: mapImage)
+            ]
+            if !drive.interruptionGaps.isEmpty {
+                messageLines.append("Tracking gaps: \(drive.interruptionGaps.count) · unrecorded sections are not drawn or estimated.")
+            }
+            shareContent = RouteShareContent(message: messageLines.joined(separator: "\n"), mapImage: mapImage)
         } catch {
             shareErrorMessage = "The route map couldn't be prepared. Please try again."
             showingShareError = true
@@ -305,6 +332,11 @@ struct DriveRouteView: View {
         }
 
         let routePoints = coordinates.map { snapshot.point(for: $0) }
+        let routePointSegments = self.routePointSegments.map { segment in
+            segment.map { point in
+                snapshot.point(for: CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude))
+            }
+        }
         let renderer = UIGraphicsImageRenderer(size: snapshot.image.size)
         return renderer.image { _ in
             snapshot.image.draw(at: .zero)
@@ -313,9 +345,11 @@ struct DriveRouteView: View {
             routePath.lineWidth = 7
             routePath.lineCapStyle = .round
             routePath.lineJoinStyle = .round
-            routePath.move(to: routePoints[0])
-            for point in routePoints.dropFirst() {
-                routePath.addLine(to: point)
+            for segment in routePointSegments where !segment.isEmpty {
+                routePath.move(to: segment[0])
+                for point in segment.dropFirst() {
+                    routePath.addLine(to: point)
+                }
             }
             UIColor(SpeedometerStyle.accent).setStroke()
             routePath.stroke()
@@ -375,6 +409,10 @@ struct DriveRouteView: View {
                 }
             }
 
+            if !drive.interruptionGaps.isEmpty {
+                interruptionGapNotice
+            }
+
             if routeCoordinates.count >= 2 {
                 Button {
                     showingDeleteConfirmation = true
@@ -394,6 +432,29 @@ struct DriveRouteView: View {
         .padding(18)
         .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 25))
+    }
+
+    private var interruptionGapNotice: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label("Recording gaps", systemImage: "location.slash")
+                .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.warning)
+
+            ForEach(drive.interruptionGaps) { gap in
+                Text("\(gap.startAt.formatted(date: .abbreviated, time: .shortened)) – \(gap.endAt.formatted(date: .abbreviated, time: .shortened))")
+                    .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.foreground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text("No speed, distance, or route points were estimated for these intervals.")
+                .modifier(AdaptiveFont(size: 11, weight: .regular, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SpeedometerStyle.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func summaryMetric(title: String, value: String) -> some View {

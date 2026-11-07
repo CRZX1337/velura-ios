@@ -95,7 +95,7 @@ struct FirstLaunchSetupView: View {
                     featureCard(
                         symbol: "shield",
                         title: "Your privacy",
-                        detail: "Location is accessed only while a drive is active."
+                        detail: "Location is used only during drives you start. Updates may continue in the background, but iOS interruptions or force-quitting can stop tracking."
                     )
                     locationAccessCard
                     Text("You can change location access anytime in Settings.")

@@ -15,7 +15,7 @@
 	<key>CFBundleVersion</key>
 	<string>32</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Velura uses your location to measure live speed and trip distance while a drive session is active. Tracking continues while the screen is locked or the app is in the background during a drive you started.</string>
+	<string>Velura uses location for speed, distance, and route only during drives you explicitly start. Location updates may continue in the background while a drive is active, subject to iOS limits; force-quitting or system termination may stop tracking.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

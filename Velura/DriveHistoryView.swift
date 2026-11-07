@@ -614,16 +614,28 @@ private struct DriveRoutePreview: View {
         guard validCoordinates.count > maximumPointCount else { return validCoordinates }
 
         let interval = Double(validCoordinates.count - 1) / Double(maximumPointCount - 1)
-        return (0..<maximumPointCount).map { index in
-            validCoordinates[Int((Double(index) * interval).rounded())]
+        var selectedIndices = Set((0..<maximumPointCount).map { index in
+            Int((Double(index) * interval).rounded())
+        })
+        for index in validCoordinates.indices.dropFirst() where
+            validCoordinates[index].segmentIndex != validCoordinates[index - 1].segmentIndex {
+            selectedIndices.insert(index - 1)
+            selectedIndices.insert(index)
         }
+        return selectedIndices.sorted().map { validCoordinates[$0] }
     }
 
     private var hasRenderableRoute: Bool {
-        guard let first = previewCoordinates.first, previewCoordinates.count > 1 else { return false }
-        return previewCoordinates.dropFirst().contains {
-            $0.latitude != first.latitude || $0.longitude != first.longitude
+        var previous: DriveRoutePoint?
+        for point in previewCoordinates {
+            if let previous,
+               previous.segmentIndex == point.segmentIndex,
+               (previous.latitude != point.latitude || previous.longitude != point.longitude) {
+                return true
+            }
+            previous = point
         }
+        return false
     }
 
     var body: some View {
@@ -634,10 +646,14 @@ private struct DriveRoutePreview: View {
                     let points = previewPoints(in: size)
                     guard let start = points.first, let finish = points.last else { return }
 
+                    let coordinates = previewCoordinates
                     var route = Path()
-                    route.move(to: start)
-                    for point in points.dropFirst() {
-                        route.addLine(to: point)
+                    for (index, point) in points.enumerated() {
+                        if index == 0 || coordinates[index].segmentIndex != coordinates[index - 1].segmentIndex {
+                            route.move(to: point)
+                        } else {
+                            route.addLine(to: point)
+                        }
                     }
                     context.stroke(route, with: .color(SpeedometerStyle.accent.opacity(0.26)), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
                     context.stroke(route, with: .color(SpeedometerStyle.accent), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))

@@ -46,6 +46,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     @Published private(set) var isSessionActive = false
     @Published private(set) var isOverspeedWarningActive = false
     @Published private(set) var hasUnfinishedSession = false
+    @Published var showDriveRecoveryChoice = false
     @Published private(set) var accelerationPreset = 50
     @Published private(set) var customAccelerationTargetKmh = 80
     @Published private(set) var accelerationTargetKmh = 50.0
@@ -66,6 +67,12 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private var routeCoordinates: [DriveRoutePoint] = []
     private var sessionStartedAt: Date?
     private var driveStartedAt: Date?
+    private var driveID: UUID?
+    private var lastProcessedLocationTimestamp: Date?
+    private var routeSegmentIndex = 0
+    private var interruptionGaps: [DriveInterruptionGap] = []
+    private var pendingGapStartAt: Date?
+    private var isAwaitingDriveRecoveryDecision = false
     private var accelerationRunStartedAt: Date?
     @Published private(set) var canBeginAccelerationRun = false
     private var pendingAccelerationArm = false
@@ -133,6 +140,12 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     func elapsedTime(at date: Date = .now) -> TimeInterval {
         elapsedSeconds + (sessionStartedAt.map { max(0, date.timeIntervalSince($0)) } ?? 0)
+    }
+
+    var driveRecoveryMessage: String {
+        let checkpoint = (pendingGapStartAt ?? driveStartedAt ?? .now)
+            .formatted(date: .abbreviated, time: .shortened)
+        return "Velura found an unfinished drive. Last saved checkpoint: \(checkpoint). No new location data has been recorded since. Resume to continue in a separate route segment, or end the drive to save only its recorded portion; missing time, speed, distance, and route points will not be estimated."
     }
 
     var accelerationStatusTitle: String {
@@ -219,6 +232,11 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func startSession() {
+        guard !isAwaitingDriveRecoveryDecision else {
+            showDriveRecoveryChoice = true
+            return
+        }
+
         switch locationManager.authorizationStatus {
         case .notDetermined:
             pendingSessionStart = true
@@ -234,6 +252,16 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             accelerationState = .ready
             showLocationAlert = true
         }
+    }
+
+    func resumeRecoveredDrive() {
+        guard hasUnfinishedSession else {
+            showDriveRecoveryChoice = false
+            return
+        }
+        isAwaitingDriveRecoveryDecision = false
+        showDriveRecoveryChoice = false
+        startSession()
     }
 
     func selectAccelerationPreset(_ preset: Int) {
@@ -257,6 +285,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func startAccelerationTest() {
+        guard !isAwaitingDriveRecoveryDecision else {
+            showDriveRecoveryChoice = true
+            return
+        }
         guard accelerationState != .waitingForMovement && accelerationState != .timing else { return }
         accelerationResult = nil
         isNewAccelerationBest = false
@@ -327,6 +359,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             elapsedSeconds += max(0, Date().timeIntervalSince(sessionStartedAt))
         }
         sessionStartedAt = nil
+        pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? Date()
         isSessionActive = false
         stopGPSFreshnessMonitoring()
         hasGPSFix = false
@@ -351,17 +384,21 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             locationManager.stopUpdatingLocation()
         }
 
+        let finishedAt = Date()
         if let lastValidLocation {
             recordRoutePoint(lastValidLocation, force: true)
         }
-        let duration = elapsedTime(at: .now)
+        completePendingGap(at: finishedAt)
+        let duration = elapsedTime(at: finishedAt)
         if duration > 0 {
             DriveHistoryStore.shared.add(DriveRecord(
-                date: driveStartedAt ?? .now,
+                id: driveID ?? UUID(),
+                date: driveStartedAt ?? finishedAt,
                 duration: duration,
                 distanceKm: distanceKm,
                 topSpeedKmh: topSpeedKmh,
-                routeCoordinates: routeCoordinates.count >= 2 ? routeCoordinates : []
+                routeCoordinates: routeCoordinates.count >= 2 ? routeCoordinates : [],
+                interruptionGaps: interruptionGaps
             ))
         }
         resetSession()
@@ -376,6 +413,13 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         isSessionActive = false
         stopGPSFreshnessMonitoring()
         hasUnfinishedSession = false
+        isAwaitingDriveRecoveryDecision = false
+        showDriveRecoveryChoice = false
+        driveID = nil
+        lastProcessedLocationTimestamp = nil
+        routeSegmentIndex = 0
+        interruptionGaps.removeAll()
+        pendingGapStartAt = nil
         ActiveDriveStore.shared.clear()
         lastSnapshotWriteAt = .distantPast
         if accelerationState == .waitingForMovement || accelerationState == .timing {
@@ -407,6 +451,24 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             speedKmh = 0
             previousLocation = nil
             interruptAccelerationTestForGPSIssue()
+
+            if isSessionActive {
+                let interruptionAt = Date()
+                if let sessionStartedAt {
+                    elapsedSeconds += max(0, interruptionAt.timeIntervalSince(sessionStartedAt))
+                }
+                sessionStartedAt = nil
+                isSessionActive = false
+                stopGPSFreshnessMonitoring()
+                pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? interruptionAt
+                configureBackgroundLocationUpdates(active: false)
+                locationManager.stopUpdatingLocation()
+                isAwaitingDriveRecoveryDecision = hasUnfinishedSession
+                persistActiveDrive(force: true)
+                if hasUnfinishedSession {
+                    showLocationAlert = true
+                }
+            }
             updateOverspeedWarning(triggerHaptic: false)
         }
         if pendingSessionStart {
@@ -428,10 +490,23 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard isSessionActive else { return }
         let receivedAt = Date()
+        var receivedValidLocation = false
 
         for location in locations where location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 50 {
             let fixAge = receivedAt.timeIntervalSince(location.timestamp)
             guard fixAge >= -1 && fixAge <= gpsFixStaleAfter else { continue }
+            guard lastProcessedLocationTimestamp.map({ location.timestamp > $0 }) ?? true else { continue }
+
+            if pendingGapStartAt == nil,
+               let previousLocation,
+               location.timestamp.timeIntervalSince(previousLocation.timestamp) > gpsFixStaleAfter {
+                pendingGapStartAt = lastProcessedLocationTimestamp ?? previousLocation.timestamp
+            }
+            if pendingGapStartAt != nil {
+                completePendingGap(at: location.timestamp)
+            }
+            lastProcessedLocationTimestamp = location.timestamp
+            receivedValidLocation = true
 
             horizontalAccuracy = location.horizontalAccuracy
             hasGPSFix = true
@@ -454,14 +529,16 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             if let previousLocation {
                 let distance = location.distance(from: previousLocation)
                 let timeDelta = location.timestamp.timeIntervalSince(previousLocation.timestamp)
-                if distance < 150 && timeDelta > 0 && timeDelta < 30 {
+                if distance < 150 && timeDelta > 0 && timeDelta <= gpsFixStaleAfter {
                     distanceKm += distance / 1_000
                 }
             }
             previousLocation = location
         }
 
-        persistActiveDrive(force: false)
+        if receivedValidLocation {
+            persistActiveDrive(force: true)
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -471,6 +548,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         previousLocation = nil
         locationUpdateFailed = authorizationStatus != .denied && authorizationStatus != .restricted
         interruptAccelerationTestForGPSIssue()
+        if isSessionActive {
+            pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? Date()
+            persistActiveDrive(force: true)
+        }
         updateOverspeedWarning(triggerHaptic: false)
     }
 
@@ -507,8 +588,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
         hasGPSFix = false
         speedKmh = 0
+        pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? Date()
         previousLocation = nil
         interruptAccelerationTestForGPSIssue()
+        persistActiveDrive(force: true)
         updateOverspeedWarning(triggerHaptic: false)
     }
 
@@ -525,6 +608,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     private func beginSession() {
         guard !isSessionActive else { return }
+        let sessionResumedAt = Date()
         hasGPSFix = false
         lastValidGPSFixAt = nil
         locationUpdateFailed = false
@@ -537,12 +621,18 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         if !hasUnfinishedSession {
             hasUnfinishedSession = true
-            driveStartedAt = Date()
+            driveStartedAt = sessionResumedAt
+            driveID = UUID()
+            lastProcessedLocationTimestamp = nil
+            routeSegmentIndex = 0
+            interruptionGaps.removeAll()
+            pendingGapStartAt = nil
             lastValidLocation = nil
             routeCoordinates.removeAll(keepingCapacity: true)
         }
+        isAwaitingDriveRecoveryDecision = false
         isSessionActive = true
-        sessionStartedAt = Date()
+        sessionStartedAt = sessionResumedAt
         previousLocation = nil
         startGPSFreshnessMonitoring()
         configureBackgroundLocationUpdates(active: true)
@@ -550,10 +640,19 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         persistActiveDrive(force: true)
     }
 
+    private func completePendingGap(at end: Date) {
+        guard let start = pendingGapStartAt else { return }
+        pendingGapStartAt = nil
+        previousLocation = nil
+        guard end > start else { return }
+        interruptionGaps.append(DriveInterruptionGap(startAt: start, endAt: end))
+        routeSegmentIndex += 1
+    }
+
     private func recordRoutePoint(_ location: CLLocation, force: Bool = false) {
         guard CLLocationCoordinate2DIsValid(location.coordinate), location.horizontalAccuracy <= 50 else { return }
 
-        if let lastPoint = routeCoordinates.last {
+        if let lastPoint = routeCoordinates.last, lastPoint.segmentIndex == routeSegmentIndex {
             let previous = CLLocation(latitude: lastPoint.latitude, longitude: lastPoint.longitude)
             let distance = location.distance(from: previous)
             let timeSinceLastPoint = location.timestamp.timeIntervalSince(lastPoint.timestamp)
@@ -563,7 +662,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         routeCoordinates.append(DriveRoutePoint(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
-            timestamp: location.timestamp
+            timestamp: location.timestamp,
+            segmentIndex: routeSegmentIndex
         ))
     }
 
@@ -592,6 +692,18 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             }
             lifecycleObservers.append(observer)
         }
+
+        let activeObserver = center.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshGPSFreshness()
+                self?.persistActiveDrive(force: true)
+            }
+        }
+        lifecycleObservers.append(activeObserver)
     }
 
     private func persistActiveDrive(force: Bool) {
@@ -600,26 +712,53 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         guard force || now.timeIntervalSince(lastSnapshotWriteAt) >= 2 else { return }
         lastSnapshotWriteAt = now
         ActiveDriveStore.shared.save(ActiveDriveSnapshot(
+            sessionID: driveID,
             startedAt: driveStartedAt,
             elapsedSeconds: elapsedTime(at: now),
             distanceKm: distanceKm,
             topSpeedKmh: topSpeedKmh,
             routeCoordinates: routeCoordinates,
-            updatedAt: now
+            updatedAt: now,
+            lastLocationAt: lastProcessedLocationTimestamp,
+            routeSegmentIndex: routeSegmentIndex,
+            interruptionGaps: interruptionGaps,
+            pendingGapStartAt: pendingGapStartAt
         ))
     }
 
     private func restoreActiveDriveSnapshot() {
         guard let snapshot = ActiveDriveStore.shared.load() else { return }
+        let alreadyCompleted: Bool
+        if let sessionID = snapshot.sessionID {
+            alreadyCompleted = DriveHistoryStore.shared.drives.contains { $0.id == sessionID }
+        } else {
+            alreadyCompleted = DriveHistoryStore.shared.drives.contains {
+                abs($0.date.timeIntervalSince(snapshot.startedAt)) < 1
+            }
+        }
+        guard !alreadyCompleted else {
+            ActiveDriveStore.shared.clear()
+            return
+        }
+
         hasUnfinishedSession = true
+        driveID = snapshot.sessionID ?? UUID()
         driveStartedAt = snapshot.startedAt
         elapsedSeconds = snapshot.elapsedSeconds
         distanceKm = snapshot.distanceKm
         topSpeedKmh = snapshot.topSpeedKmh
         routeCoordinates = snapshot.routeCoordinates
+        lastProcessedLocationTimestamp = snapshot.lastLocationAt ?? snapshot.routeCoordinates.last?.timestamp
+        routeSegmentIndex = max(snapshot.routeSegmentIndex, snapshot.routeCoordinates.map(\.segmentIndex).max() ?? 0)
+        interruptionGaps = snapshot.interruptionGaps
+        pendingGapStartAt = snapshot.pendingGapStartAt
+            ?? lastProcessedLocationTimestamp
+            ?? snapshot.updatedAt
         previousLocation = nil
         lastValidLocation = nil
         lastSnapshotWriteAt = snapshot.updatedAt
+        isAwaitingDriveRecoveryDecision = true
+        showDriveRecoveryChoice = true
     }
 
     private func restoreAccelerationSettings() {

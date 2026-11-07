@@ -144,7 +144,20 @@ struct ContentView: View {
             }
             Button("Not now", role: .cancel) { }
         } message: {
-            Text("Allow location access in Settings to measure your live speed and trip distance.")
+            Text(model.hasUnfinishedSession
+                ? "Allow location access in Settings to resume this drive. You can still end it and save the recorded portion without location."
+                : "Allow location access in Settings to measure your live speed and trip distance.")
+        }
+        .confirmationDialog("Unfinished drive found", isPresented: $model.showDriveRecoveryChoice, titleVisibility: .visible) {
+            Button("Resume drive") {
+                model.resumeRecoveredDrive()
+            }
+            Button("End and save recorded portion", role: .destructive) {
+                model.finishSession()
+            }
+            Button("Not now", role: .cancel) { }
+        } message: {
+            Text(model.driveRecoveryMessage)
         }
     }
 
