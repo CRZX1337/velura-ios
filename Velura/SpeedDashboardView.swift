@@ -176,10 +176,11 @@ struct SpeedDashboardView: View {
         if model.hasGPSFix {
             return "±\(Int(model.horizontalAccuracy.rounded())) m"
         }
-        let detail = model.gpsStatusDetail
-        if detail == "Allow location access in Settings" { return "Open Settings" }
-        if detail == "Start a session to connect GPS" { return "Stand by" }
-        if detail == "Waiting for a clear satellite fix" { return "Searching" }
+        if model.gpsStatusDetail == "Allow location access in Settings" { return "Open Settings" }
+        if model.gpsStatusDetail == "Start a session to connect GPS" { return "Stand by" }
+        if model.locationUpdateFailed { return "Unavailable" }
+        if model.isGPSFixStale { return "Stale · searching" }
+        if model.isSessionActive { return "Searching" }
         return "Ready"
     }
 

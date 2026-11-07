@@ -40,6 +40,9 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     @Published private(set) var authorizationStatus: CLAuthorizationStatus
     @Published private(set) var horizontalAccuracy: CLLocationAccuracy = -1
     @Published private(set) var hasGPSFix = false
+    @Published private(set) var lastValidGPSFixAt: Date?
+    @Published private(set) var locationUpdateFailed = false
+    @Published private(set) var accelerationInterruptedForGPS = false
     @Published private(set) var isSessionActive = false
     @Published private(set) var isOverspeedWarningActive = false
     @Published private(set) var hasUnfinishedSession = false
@@ -56,6 +59,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private let locationManager = CLLocationManager()
     private let defaults = UserDefaults.standard
     private let accelerationAttemptsStorageKey = "speedometer.acceleration.attempts"
+    private let gpsFixStaleAfter: TimeInterval = 5
+    private var gpsFreshnessTimer: Timer?
     private var previousLocation: CLLocation?
     private var lastValidLocation: CLLocation?
     private var routeCoordinates: [DriveRoutePoint] = []
@@ -80,14 +85,26 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         restoreAccelerationSettings()
     }
 
+    var isGPSFixStale: Bool {
+        guard isSessionActive, let lastValidGPSFixAt, !locationUpdateFailed else { return false }
+        return Date().timeIntervalSince(lastValidGPSFixAt) > gpsFixStaleAfter
+    }
+
+    private var hasCurrentGPSFix: Bool {
+        guard isSessionActive, hasGPSFix, let lastValidGPSFixAt else { return false }
+        return Date().timeIntervalSince(lastValidGPSFixAt) <= gpsFixStaleAfter
+    }
+
     var gpsStatusTitle: String {
-        if hasGPSFix { return "GPS LOCKED" }
+        if hasCurrentGPSFix { return "GPS LOCKED" }
         switch authorizationStatus {
         case .denied, .restricted:
             return "LOCATION OFF"
         case .notDetermined:
             return "GPS STANDBY"
         case .authorizedAlways, .authorizedWhenInUse:
+            if locationUpdateFailed { return "GPS UNAVAILABLE" }
+            if isGPSFixStale { return "GPS STALE" }
             return isSessionActive ? "SEARCHING FOR GPS" : "GPS READY"
         @unknown default:
             return "GPS STANDBY"
@@ -95,14 +112,16 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     var gpsStatusDetail: String {
-        if hasGPSFix { return "Accuracy ±\(Int(horizontalAccuracy.rounded())) m" }
+        if hasCurrentGPSFix { return "Accuracy ±\(Int(horizontalAccuracy.rounded())) m" }
         switch authorizationStatus {
         case .denied, .restricted:
             return "Allow location access in Settings"
         case .notDetermined:
             return "Start a session to connect GPS"
         case .authorizedAlways, .authorizedWhenInUse:
-            return isSessionActive ? "Waiting for a clear satellite fix" : "Ready when you are"
+            if locationUpdateFailed { return "Location updates failed · retrying" }
+            if isGPSFixStale { return "Last GPS fix is stale · searching" }
+            return isSessionActive ? "Searching for a fresh GPS fix" : "Ready when you are"
         @unknown default:
             return "Waiting for location permission"
         }
@@ -172,9 +191,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         guard accelerationState != .waitingForMovement && accelerationState != .timing else { return }
         accelerationResult = nil
         isNewAccelerationBest = false
+        accelerationInterruptedForGPS = false
         accelerationRunStartedAt = nil
         accelerationState = .waitingForMovement
-        canBeginAccelerationRun = speedKmh < accelerationStartThresholdKmh
+        canBeginAccelerationRun = hasCurrentGPSFix && speedKmh < accelerationStartThresholdKmh
 
         guard isSessionActive else {
             pendingAccelerationArm = true
@@ -189,6 +209,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         accelerationRunStartedAt = nil
         accelerationResult = nil
         isNewAccelerationBest = false
+        accelerationInterruptedForGPS = false
         accelerationState = .ready
     }
 
@@ -238,13 +259,17 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         sessionStartedAt = nil
         isSessionActive = false
+        stopGPSFreshnessMonitoring()
         hasGPSFix = false
+        lastValidGPSFixAt = nil
+        locationUpdateFailed = false
         speedKmh = 0
         updateOverspeedWarning(triggerHaptic: false)
         previousLocation = nil
         if accelerationState == .waitingForMovement || accelerationState == .timing {
             resetAccelerationTest()
         }
+        accelerationInterruptedForGPS = false
         locationManager.stopUpdatingLocation()
     }
 
@@ -276,10 +301,12 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         pendingSessionStart = false
         isSessionActive = false
+        stopGPSFreshnessMonitoring()
         hasUnfinishedSession = false
         if accelerationState == .waitingForMovement || accelerationState == .timing {
             resetAccelerationTest()
         }
+        accelerationInterruptedForGPS = false
         sessionStartedAt = nil
         driveStartedAt = nil
         previousLocation = nil
@@ -291,11 +318,22 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         elapsedSeconds = 0
         horizontalAccuracy = -1
         hasGPSFix = false
+        lastValidGPSFixAt = nil
+        locationUpdateFailed = false
         updateOverspeedWarning(triggerHaptic: false)
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorizationStatus = manager.authorizationStatus
+        if authorizationStatus == .denied || authorizationStatus == .restricted {
+            hasGPSFix = false
+            lastValidGPSFixAt = nil
+            locationUpdateFailed = false
+            speedKmh = 0
+            previousLocation = nil
+            interruptAccelerationTestForGPSIssue()
+            updateOverspeedWarning(triggerHaptic: false)
+        }
         if pendingSessionStart {
             switch authorizationStatus {
             case .authorizedAlways, .authorizedWhenInUse:
@@ -314,9 +352,16 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard isSessionActive else { return }
+        let receivedAt = Date()
+
         for location in locations where location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 50 {
+            let fixAge = receivedAt.timeIntervalSince(location.timestamp)
+            guard fixAge >= -1 && fixAge <= gpsFixStaleAfter else { continue }
+
             horizontalAccuracy = location.horizontalAccuracy
             hasGPSFix = true
+            lastValidGPSFixAt = receivedAt
+            locationUpdateFailed = false
             lastValidLocation = location
             recordRoutePoint(location)
 
@@ -326,6 +371,9 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
                 topSpeedKmh = max(topSpeedKmh, speedKmh)
                 updateAccelerationTest(speedKmh: speedKmh, at: location.timestamp)
                 updateOverspeedWarning(triggerHaptic: true)
+            } else {
+                speedKmh = 0
+                updateOverspeedWarning(triggerHaptic: false)
             }
 
             if let previousLocation {
@@ -340,12 +388,17 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        authorizationStatus = manager.authorizationStatus
         hasGPSFix = false
+        speedKmh = 0
+        previousLocation = nil
+        locationUpdateFailed = authorizationStatus != .denied && authorizationStatus != .restricted
+        interruptAccelerationTestForGPSIssue()
         updateOverspeedWarning(triggerHaptic: false)
     }
 
     private func updateOverspeedWarning(triggerHaptic: Bool) {
-        let shouldWarn = isSessionActive && hasGPSFix && overspeedWarningEnabled && speedKmh >= overspeedThresholdKmh
+        let shouldWarn = isSessionActive && hasCurrentGPSFix && overspeedWarningEnabled && speedKmh >= overspeedThresholdKmh
         guard shouldWarn != isOverspeedWarningActive else { return }
         isOverspeedWarningActive = shouldWarn
         if shouldWarn && triggerHaptic {
@@ -355,12 +408,55 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
     }
 
+    private func startGPSFreshnessMonitoring() {
+        stopGPSFreshnessMonitoring()
+        gpsFreshnessTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshGPSFreshness()
+            }
+        }
+    }
+
+    private func stopGPSFreshnessMonitoring() {
+        gpsFreshnessTimer?.invalidate()
+        gpsFreshnessTimer = nil
+    }
+
+    private func refreshGPSFreshness() {
+        guard isSessionActive,
+              let lastValidGPSFixAt,
+              Date().timeIntervalSince(lastValidGPSFixAt) > gpsFixStaleAfter,
+              hasGPSFix else { return }
+
+        hasGPSFix = false
+        speedKmh = 0
+        previousLocation = nil
+        interruptAccelerationTestForGPSIssue()
+        updateOverspeedWarning(triggerHaptic: false)
+    }
+
+    private func interruptAccelerationTestForGPSIssue() {
+        guard accelerationState == .waitingForMovement || accelerationState == .timing else { return }
+        pendingAccelerationArm = false
+        canBeginAccelerationRun = false
+        accelerationRunStartedAt = nil
+        accelerationResult = nil
+        isNewAccelerationBest = false
+        accelerationState = .ready
+        accelerationInterruptedForGPS = true
+    }
+
     private func beginSession() {
         guard !isSessionActive else { return }
+        hasGPSFix = false
+        lastValidGPSFixAt = nil
+        locationUpdateFailed = false
+        horizontalAccuracy = -1
+        speedKmh = 0
         if pendingAccelerationArm {
             pendingAccelerationArm = false
             accelerationState = .waitingForMovement
-            canBeginAccelerationRun = speedKmh < accelerationStartThresholdKmh
+            canBeginAccelerationRun = false
         }
         if !hasUnfinishedSession {
             hasUnfinishedSession = true
@@ -371,6 +467,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         isSessionActive = true
         sessionStartedAt = Date()
         previousLocation = nil
+        startGPSFreshnessMonitoring()
         locationManager.startUpdatingLocation()
     }
 
@@ -424,6 +521,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func updateAccelerationTest(speedKmh: Double, at timestamp: Date) {
+        guard hasCurrentGPSFix else { return }
         switch accelerationState {
         case .waitingForMovement:
             if speedKmh < accelerationStartThresholdKmh {

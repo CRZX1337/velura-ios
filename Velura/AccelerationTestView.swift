@@ -351,9 +351,12 @@ struct AccelerationTestView: View {
 
     private var stateTitle: String {
         switch model.accelerationState {
-        case .ready: return "READY"
+        case .ready:
+            if model.accelerationInterruptedForGPS { return "GPS INTERRUPTED" }
+            if model.isSessionActive && !model.hasGPSFix { return model.gpsStatusTitle }
+            return "READY"
         case .waitingForMovement:
-            if !model.isSessionActive || !model.hasGPSFix { return "GPS STANDBY" }
+            if !model.isSessionActive || !model.hasGPSFix { return model.gpsStatusTitle }
             return model.canBeginAccelerationRun ? "ARMED" : "WAIT FOR STOP"
         case .timing: return "TIMING"
         case .completed: return model.isNewAccelerationBest ? "NEW BEST" : "COMPLETE"
@@ -363,12 +366,16 @@ struct AccelerationTestView: View {
     private var stateDetail: String {
         switch model.accelerationState {
         case .ready:
+            if model.accelerationInterruptedForGPS {
+                return "GPS was lost; wait for a fresh fix and arm again"
+            }
+            if model.isSessionActive && !model.hasGPSFix { return model.gpsStatusDetail }
             return "Start from a standstill to begin timing"
         case .waitingForMovement:
             if !model.isSessionActive || !model.hasGPSFix {
                 return model.gpsStatusDetail == "Allow location access in Settings"
                     ? "Allow location access to measure your launch"
-                    : "Waiting for a clear GPS fix to arm the timer"
+                    : model.gpsStatusDetail
             } else if model.canBeginAccelerationRun {
                 return "Accelerate to \(target) \(speedUnit) to start timing"
             } else {
