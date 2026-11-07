@@ -169,8 +169,21 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             updatedAt: date,
             isRunning: isSessionActive && !ended,
             isEnded: ended,
-            usesMiles: defaults.bool(forKey: "speedometer.usesMiles")
+            usesMiles: defaults.bool(forKey: "speedometer.usesMiles"),
+            themeRawValue: AppAppearance.shared.theme.rawValue,
+            appearanceModeRawValue: AppAppearance.shared.appearanceMode.rawValue,
+            dialStyleRawValue: AppAppearance.shared.dialStyle.rawValue,
+            displayScaleRawValue: defaults.string(forKey: "speedometer.dashboard.displayScale") ?? DashboardDisplayScale.standard.rawValue,
+            dialMaximum: liveActivityDialMaximum
         )
+    }
+
+    private var liveActivityDialMaximum: Double {
+        let selectedRange = defaults.object(forKey: "speedometer.selectedRange") as? Int ?? 50
+        let maximum = selectedRange == -1
+            ? (defaults.object(forKey: "speedometer.customRange") as? Int ?? 160)
+            : selectedRange
+        return Double(max(1, maximum))
     }
 
     private func updateDriveLiveActivity(at date: Date = .now) {

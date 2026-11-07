@@ -21,6 +21,67 @@ public struct VeluraDriveActivityAttributes: ActivityAttributes {
         public var isRunning: Bool
         public var isEnded: Bool
         public var usesMiles: Bool
+        public var themeRawValue: String
+        public var appearanceModeRawValue: String
+        public var dialStyleRawValue: String
+        public var displayScaleRawValue: String
+        public var dialMaximum: Double
+
+        public init(
+            speedKmh: Double,
+            elapsedSeconds: TimeInterval,
+            distanceKm: Double,
+            topSpeedKmh: Double,
+            gpsFreshness: GPSFreshness,
+            updatedAt: Date,
+            isRunning: Bool,
+            isEnded: Bool,
+            usesMiles: Bool,
+            themeRawValue: String = "midnight",
+            appearanceModeRawValue: String = "palette",
+            dialStyleRawValue: String = "classic",
+            displayScaleRawValue: String = "standard",
+            dialMaximum: Double = 50
+        ) {
+            self.speedKmh = speedKmh
+            self.elapsedSeconds = elapsedSeconds
+            self.distanceKm = distanceKm
+            self.topSpeedKmh = topSpeedKmh
+            self.gpsFreshness = gpsFreshness
+            self.updatedAt = updatedAt
+            self.isRunning = isRunning
+            self.isEnded = isEnded
+            self.usesMiles = usesMiles
+            self.themeRawValue = themeRawValue
+            self.appearanceModeRawValue = appearanceModeRawValue
+            self.dialStyleRawValue = dialStyleRawValue
+            self.displayScaleRawValue = displayScaleRawValue
+            self.dialMaximum = dialMaximum
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case speedKmh, elapsedSeconds, distanceKm, topSpeedKmh, gpsFreshness
+            case updatedAt, isRunning, isEnded, usesMiles
+            case themeRawValue, appearanceModeRawValue, dialStyleRawValue, displayScaleRawValue, dialMaximum
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            speedKmh = try container.decode(Double.self, forKey: .speedKmh)
+            elapsedSeconds = try container.decode(TimeInterval.self, forKey: .elapsedSeconds)
+            distanceKm = try container.decode(Double.self, forKey: .distanceKm)
+            topSpeedKmh = try container.decode(Double.self, forKey: .topSpeedKmh)
+            gpsFreshness = try container.decode(GPSFreshness.self, forKey: .gpsFreshness)
+            updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+            isRunning = try container.decode(Bool.self, forKey: .isRunning)
+            isEnded = try container.decode(Bool.self, forKey: .isEnded)
+            usesMiles = try container.decode(Bool.self, forKey: .usesMiles)
+            themeRawValue = try container.decodeIfPresent(String.self, forKey: .themeRawValue) ?? "midnight"
+            appearanceModeRawValue = try container.decodeIfPresent(String.self, forKey: .appearanceModeRawValue) ?? "palette"
+            dialStyleRawValue = try container.decodeIfPresent(String.self, forKey: .dialStyleRawValue) ?? "classic"
+            displayScaleRawValue = try container.decodeIfPresent(String.self, forKey: .displayScaleRawValue) ?? "standard"
+            dialMaximum = try container.decodeIfPresent(Double.self, forKey: .dialMaximum) ?? 50
+        }
     }
 
     public var driveID: UUID

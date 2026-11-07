@@ -68,8 +68,8 @@ struct ActiveDriveView: View {
             .frame(maxWidth: 520)
             .frame(maxWidth: .infinity)
         }
-        .background(Color.black)
-        .preferredColorScheme(.dark)
+        .background(appearance.background)
+        .preferredColorScheme(appearance.preferredColorScheme)
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
             if !model.routeCoordinates.isEmpty {
@@ -127,17 +127,17 @@ struct ActiveDriveView: View {
             Button(action: onClose) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                     .frame(width: 54, height: 54)
                     .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+                    .overlay(Circle().stroke(SpeedometerStyle.foreground.opacity(0.18), lineWidth: 1))
             }
             .accessibilityLabel("Close active drive")
 
             Spacer(minLength: 8)
             Text("Drive")
                 .font(.system(size: 19, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
             Spacer(minLength: 8)
 
             Menu {
@@ -147,10 +147,10 @@ struct ActiveDriveView: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                     .frame(width: 54, height: 54)
                     .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+                    .overlay(Circle().stroke(SpeedometerStyle.foreground.opacity(0.18), lineWidth: 1))
             }
             .accessibilityLabel("More drive options")
         }
@@ -179,7 +179,7 @@ struct ActiveDriveView: View {
                     .font(.system(size: 48, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SpeedometerStyle.foreground)
                 Text(speedUnit)
                     .font(.system(size: 22, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
@@ -226,7 +226,7 @@ struct ActiveDriveView: View {
         .background(SpeedometerStyle.background.opacity(0.82), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(.white.opacity(0.17), lineWidth: 1)
+                .stroke(SpeedometerStyle.foreground.opacity(0.17), lineWidth: 1)
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 28))
     }
@@ -243,7 +243,7 @@ struct ActiveDriveView: View {
             Text(value)
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(.white)
+                .foregroundStyle(SpeedometerStyle.foreground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(title)

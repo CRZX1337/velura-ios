@@ -146,6 +146,12 @@ struct ContentView: View {
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isOverspeedWarningActive)
         .onAppear(perform: syncOverspeedWarning)
         .onChange(of: usesMiles) { _, _ in model.refreshLiveActivity() }
+        .onChange(of: appearance.theme) { _, _ in model.refreshLiveActivity() }
+        .onChange(of: appearance.appearanceMode) { _, _ in model.refreshLiveActivity() }
+        .onChange(of: appearance.dialStyle) { _, _ in model.refreshLiveActivity() }
+        .onChange(of: dashboardDisplayScaleRawValue) { _, _ in model.refreshLiveActivity() }
+        .onChange(of: selectedRange) { _, _ in model.refreshLiveActivity() }
+        .onChange(of: customRange) { _, _ in model.refreshLiveActivity() }
         .onChange(of: overspeedWarningEnabled) { _, _ in syncOverspeedWarning() }
         .onChange(of: overspeedThresholdKmh) { _, _ in syncOverspeedWarning() }
         .alert("Location access is off", isPresented: $model.showLocationAlert) {
