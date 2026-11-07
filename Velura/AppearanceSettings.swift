@@ -93,10 +93,11 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
     case classic
     case minimal
     case sport
-    case analog
     case segmentedLED
     case digitalHUD
     case twinRing
+    case fullCircle
+    case verticalBar
 
     var id: String { rawValue }
 
@@ -105,10 +106,11 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         case .classic: "Classic"
         case .minimal: "Minimal"
         case .sport: "Sport"
-        case .analog: "Analog"
         case .segmentedLED: "LED arc"
         case .digitalHUD: "Digital HUD"
         case .twinRing: "Twin ring"
+        case .fullCircle: "Full circle"
+        case .verticalBar: "Vertical bar"
         }
     }
 
@@ -117,10 +119,11 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         case .classic: 10
         case .minimal: 7
         case .sport: 13
-        case .analog: 7
         case .segmentedLED: 8
         case .digitalHUD: 8
         case .twinRing: 8
+        case .fullCircle: 10
+        case .verticalBar: 8
         }
     }
 
@@ -129,10 +132,8 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         case .classic: 40
         case .minimal: 12
         case .sport: 64
-        case .analog: 48
         case .segmentedLED: 48
-        case .digitalHUD: 0
-        case .twinRing: 0
+        case .digitalHUD, .twinRing, .fullCircle, .verticalBar: 0
         }
     }
 
@@ -140,26 +141,23 @@ enum SpeedometerDialStyle: String, CaseIterable, Identifiable {
         switch self {
         case .classic: 10
         case .minimal: 6
-        case .sport: 8
-        case .analog: 8
-        case .segmentedLED: 8
-        case .digitalHUD: 1
-        case .twinRing: 1
+        case .sport, .segmentedLED: 8
+        case .digitalHUD, .twinRing, .fullCircle, .verticalBar: 1
         }
     }
 
     var labelCount: Int {
         switch self {
-        case .classic, .sport, .analog: 5
+        case .classic, .sport: 5
         case .minimal, .segmentedLED, .twinRing: 3
-        case .digitalHUD: 0
+        case .digitalHUD, .fullCircle, .verticalBar: 0
         }
     }
 
     var showsTicks: Bool {
         switch self {
-        case .classic, .sport, .analog: true
-        case .minimal, .segmentedLED, .digitalHUD, .twinRing: false
+        case .classic, .sport: true
+        case .minimal, .segmentedLED, .digitalHUD, .twinRing, .fullCircle, .verticalBar: false
         }
     }
 }

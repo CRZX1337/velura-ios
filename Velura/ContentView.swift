@@ -467,14 +467,16 @@ struct ContentView: View {
         switch style {
         case .classic, .minimal, .sport:
             classicDialPreview(style)
-        case .analog:
-            analogDialPreview
         case .segmentedLED:
             segmentedDialPreview
         case .digitalHUD:
             digitalDialPreview
         case .twinRing:
             twinRingDialPreview
+        case .fullCircle:
+            fullCircleDialPreview
+        case .verticalBar:
+            verticalBarDialPreview
         }
     }
 
@@ -508,24 +510,35 @@ struct ContentView: View {
         }
     }
 
-    private var analogDialPreview: some View {
+    private var fullCircleDialPreview: some View {
         ZStack {
-            GaugeArc(progress: 1)
-                .stroke(SpeedometerStyle.foreground.opacity(0.14), style: StrokeStyle(lineWidth: 3, lineCap: .round))
-            GaugeTicks(tickCount: 32, majorTickInterval: 8)
-                .stroke(SpeedometerStyle.secondary.opacity(0.75), style: StrokeStyle(lineWidth: 0.65, lineCap: .round))
-            GaugeNeedle(progress: gaugePreviewProgress)
-                .stroke(SpeedometerStyle.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
             Circle()
-                .fill(SpeedometerStyle.accent)
-                .frame(width: 4, height: 4)
+                .stroke(SpeedometerStyle.foreground.opacity(0.14), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: CGFloat(gaugePreviewProgress))
+                .stroke(SpeedometerStyle.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
             Text(String(format: "%.0f", displayedSpeed))
                 .modifier(AdaptiveFont(size: 8, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
-                .offset(y: 5)
+        }
+        .frame(width: 42, height: 42)
+    }
+
+    private var verticalBarDialPreview: some View {
+        HStack(spacing: 6) {
+            Text(String(format: "%.0f", displayedSpeed))
+                .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(SpeedometerStyle.foreground)
+            ZStack(alignment: .bottom) {
+                Capsule().fill(SpeedometerStyle.foreground.opacity(0.14))
+                Capsule()
+                    .fill(SpeedometerStyle.accent)
+                    .frame(height: 32 * CGFloat(gaugePreviewProgress))
+            }
+            .frame(width: 5, height: 32)
         }
         .frame(width: 60, height: 45)
-        .offset(y: 5)
     }
 
     private var segmentedDialPreview: some View {
@@ -942,6 +955,10 @@ struct SpeedometerGauge: View {
                     digitalHUD(gaugeColor: gaugeColor, readoutSize: digitalReadoutSize, unitSize: digitalUnitSize)
                         .frame(width: min(proxy.size.width * 0.94, 420))
                         .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                } else if dialStyle == .verticalBar {
+                    verticalBarGauge(gaugeColor: gaugeColor, readoutSize: digitalReadoutSize, unitSize: digitalUnitSize)
+                        .frame(width: min(proxy.size.width * 0.94, 420), height: min(proxy.size.height * 0.7, 340))
+                        .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 } else {
                     dialFace(
                         diameter: diameter,
@@ -973,7 +990,21 @@ struct SpeedometerGauge: View {
         labelSize: CGFloat
     ) -> some View {
         ZStack {
-            if dialStyle == .twinRing {
+            if dialStyle == .fullCircle {
+                Circle()
+                    .stroke(SpeedometerStyle.foreground.opacity(0.10), lineWidth: dialStyle.trackWidth)
+                    .frame(width: diameter, height: diameter)
+                    .position(center)
+                Circle()
+                    .trim(from: 0, to: CGFloat(progress))
+                    .stroke(gaugeColor, style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: gaugeColor.opacity(0.42), radius: 10)
+                    .frame(width: diameter, height: diameter)
+                    .position(center)
+                    .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+                    .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
+            } else if dialStyle == .twinRing {
                 GaugeArc(progress: 1, radiusFraction: 0.43)
                     .stroke(SpeedometerStyle.foreground.opacity(0.10), style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
                     .frame(width: diameter, height: diameter)
@@ -1030,37 +1061,21 @@ struct SpeedometerGauge: View {
                         .position(center)
                 }
 
-                if dialStyle == .analog {
-                    GaugeNeedle(progress: progress)
-                        .stroke(gaugeColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                        .shadow(color: gaugeColor.opacity(0.35), radius: 5)
-                        .frame(width: diameter, height: diameter)
-                        .position(center)
-                        .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
-                    Circle()
-                        .fill(gaugeColor)
-                        .frame(width: 14, height: 14)
-                        .overlay {
-                            Circle().stroke(SpeedometerStyle.background, lineWidth: 3)
-                        }
-                        .position(center)
-                } else {
-                    GaugeArc(progress: progress)
-                        .stroke(gaugeColor, style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
-                        .shadow(color: gaugeColor.opacity(0.42), radius: 10)
-                        .frame(width: diameter, height: diameter)
-                        .position(center)
-                        .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
-                        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
+                GaugeArc(progress: progress)
+                    .stroke(gaugeColor, style: StrokeStyle(lineWidth: dialStyle.trackWidth, lineCap: .round))
+                    .shadow(color: gaugeColor.opacity(0.42), radius: 10)
+                    .frame(width: diameter, height: diameter)
+                    .position(center)
+                    .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+                    .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
 
-                    let indicatorAngle = (150 + 240 * progress) * .pi / 180
-                    Circle()
-                        .fill(gaugeColor)
-                        .frame(width: dialStyle == .sport ? 12 : 10, height: dialStyle == .sport ? 12 : 10)
-                        .shadow(color: gaugeColor.opacity(0.75), radius: 8)
-                        .position(x: center.x + cos(indicatorAngle) * radius, y: center.y + sin(indicatorAngle) * radius)
-                        .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
-                }
+                let indicatorAngle = (150 + 240 * progress) * .pi / 180
+                Circle()
+                    .fill(gaugeColor)
+                    .frame(width: dialStyle == .sport ? 12 : 10, height: dialStyle == .sport ? 12 : 10)
+                    .shadow(color: gaugeColor.opacity(0.75), radius: 8)
+                    .position(x: center.x + cos(indicatorAngle) * radius, y: center.y + sin(indicatorAngle) * radius)
+                    .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
             }
 
             ForEach(0..<dialStyle.labelCount, id: \.self) { index in
@@ -1088,6 +1103,59 @@ struct SpeedometerGauge: View {
             .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: speed)
             .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
         }
+    }
+
+    private func verticalBarGauge(gaugeColor: Color, readoutSize: CGFloat, unitSize: CGFloat) -> some View {
+        HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("LIVE SPEED")
+                    .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1.3)
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(String(format: "%.0f", speed))
+                        .font(.system(size: readoutSize, weight: .light, design: .rounded).monospacedDigit())
+                        .foregroundStyle(isOverspeed ? SpeedometerStyle.warning : SpeedometerStyle.foreground)
+                        .contentTransition(.numericText())
+                        .minimumScaleFactor(0.65)
+                        .lineLimit(1)
+                    Text(unit)
+                        .font(.system(size: unitSize, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+            VStack(spacing: 5) {
+                Text("\(Int(maximum))")
+                GeometryReader { geometry in
+                    ZStack(alignment: .bottom) {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(SpeedometerStyle.foreground.opacity(0.13))
+                        if progress > 0 {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(gaugeColor)
+                                .frame(height: max(6, geometry.size.height * CGFloat(progress)))
+                                .shadow(color: gaugeColor.opacity(0.35), radius: 6)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+                .frame(width: 14, height: 128)
+                Text("0")
+            }
+            .modifier(AdaptiveFont(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+            .foregroundStyle(SpeedometerStyle.secondary)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(gaugeColor.opacity(0.3), lineWidth: 1)
+        }
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: speed)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
     }
 
     private func digitalHUD(gaugeColor: Color, readoutSize: CGFloat, unitSize: CGFloat) -> some View {
@@ -1158,21 +1226,6 @@ private struct GaugeArc: Shape {
             endAngle: .degrees(150 + 240 * min(max(progress, 0), 1)),
             clockwise: false
         )
-        return path
-    }
-}
-
-private struct GaugeNeedle: Shape {
-    let progress: Double
-
-    func path(in rect: CGRect) -> Path {
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let angle = (150 + 240 * min(max(progress, 0), 1)) * .pi / 180
-        let radius = min(rect.width, rect.height) * 0.34
-        let tip = CGPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius)
-        var path = Path()
-        path.move(to: center)
-        path.addLine(to: tip)
         return path
     }
 }
