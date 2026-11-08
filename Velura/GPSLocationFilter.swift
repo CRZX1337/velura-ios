@@ -23,13 +23,20 @@ enum GPSLocationIssue: Equatable {
 }
 
 struct GPSLocationFilter {
-    private let maximumSampleAge: TimeInterval = 5
+    static let freshnessWindow: TimeInterval = 5
+
+    private let maximumSampleAge = GPSLocationFilter.freshnessWindow
     private let maximumHorizontalAccuracy: CLLocationAccuracy = 35
     private let maximumSpeedAccuracy: Double = 15
     private let maximumPlausibleSpeedKmh = 360.0
     private let maximumPlausibleSpeedMetersPerSecond = 100.0
     private let maximumPositionErrorAllowance: CLLocationDistance = 40
     private let minimumPositionErrorAllowance: CLLocationDistance = 10
+
+    static func isFresh(lastAcceptedAt: Date, now: Date) -> Bool {
+        let age = now.timeIntervalSince(lastAcceptedAt)
+        return age.isFinite && age >= 0 && age <= freshnessWindow
+    }
 
     func issue(
         for location: CLLocation,

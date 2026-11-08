@@ -165,6 +165,7 @@ private struct LockScreenDriveActivityView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var state: VeluraDriveActivityAttributes.ContentState { context.state }
+    private var isStale: Bool { context.isStale && !state.isEnded }
     private var colors: LiveActivityColors {
         LiveActivityColors(
             theme: state.themeRawValue,
@@ -215,12 +216,12 @@ private struct LockScreenDriveActivityView: View {
 
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(state.isEnded ? colors.secondary : colors.mint)
+                        .fill(isStale ? colors.warning : (state.isEnded ? colors.secondary : colors.mint))
                         .frame(width: 7, height: 7)
-                    Text(state.isEnded ? "COMPLETE" : (state.isRunning ? "DRIVING" : "PAUSED"))
+                    Text(isStale ? "DATA STALE" : (state.isEnded ? "COMPLETE" : (state.isRunning ? "DRIVING" : "PAUSED")))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .tracking(0.45)
-                        .foregroundStyle(colors.secondary)
+                        .foregroundStyle(isStale ? colors.warning : colors.secondary)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -241,7 +242,7 @@ private struct LockScreenDriveActivityView: View {
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
                             .foregroundStyle(colors.secondary)
                     }
-                    Text(state.isEnded ? "FINAL SPEED" : "CURRENT SPEED")
+                    Text(isStale ? "LAST SPEED · STALE" : (state.isEnded ? "FINAL SPEED" : "CURRENT SPEED"))
                         .font(.system(size: 9, weight: .semibold, design: .rounded))
                         .tracking(1.05)
                         .foregroundStyle(colors.secondary)
@@ -319,7 +320,7 @@ private struct LockScreenDriveActivityView: View {
         .activitySystemActionForegroundColor(colors.foreground)
         .widgetURL(URL(string: "velura://drive/active"))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Velura live drive. Current speed \(speed) \(speedUnit), distance \(String(format: "%.1f", state.distanceKm * conversion)) \(distanceUnit), duration \(formattedDuration(state.elapsedSeconds)), top speed \(Int((state.topSpeedKmh * conversion).rounded())) \(speedUnit), GPS \(gpsText.lowercased())")
+        .accessibilityLabel("Velura live drive. \(isStale ? "Last known speed" : (state.isEnded ? "Final speed" : "Current speed")) \(speed) \(speedUnit)\(isStale ? ", data stale" : ""), distance \(String(format: "%.1f", state.distanceKm * conversion)) \(distanceUnit), duration \(formattedDuration(state.elapsedSeconds)), top speed \(Int((state.topSpeedKmh * conversion).rounded())) \(speedUnit), GPS \(gpsText.lowercased())")
     }
 
     private var gpsColor: Color {
@@ -443,6 +444,7 @@ private struct DynamicIslandDriveActivityView {
     let context: ActivityViewContext<VeluraDriveActivityAttributes>
 
     private var state: VeluraDriveActivityAttributes.ContentState { context.state }
+    private var isStale: Bool { context.isStale && !state.isEnded }
     private var colors: LiveActivityColors {
         LiveActivityColors(
             theme: state.themeRawValue,
@@ -477,21 +479,28 @@ private struct DynamicIslandDriveActivityView {
                             .font(.system(size: 10, weight: .bold, design: .rounded))
                             .tracking(1)
                             .foregroundStyle(palette.secondary)
-                        Text(state.isEnded ? "DRIVE COMPLETE" : (state.isRunning ? "DRIVE ACTIVE" : "DRIVE PAUSED"))
+                        Text(isStale ? "DATA STALE" : (state.isEnded ? "DRIVE COMPLETE" : (state.isRunning ? "DRIVE ACTIVE" : "DRIVE PAUSED")))
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(palette.foreground)
+                            .foregroundStyle(isStale ? palette.warning : palette.foreground)
                     }
                 }
             }
             DynamicIslandExpandedRegion(.trailing) {
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text("\(speed)")
-                        .font(.system(size: 23 * displayScale, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(palette.foreground)
-                    Text(speedUnit)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(palette.secondary)
+                if isStale {
+                    Text("STALE")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .tracking(0.5)
+                        .foregroundStyle(palette.warning)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("\(speed)")
+                            .font(.system(size: 23 * displayScale, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.foreground)
+                        Text(speedUnit)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(palette.secondary)
+                    }
                 }
             }
             DynamicIslandExpandedRegion(.bottom) {
@@ -519,21 +528,35 @@ private struct DynamicIslandDriveActivityView {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(palette.accent)
         } compactTrailing: {
-            HStack(spacing: 2) {
-                Text("\(speed)")
-                    .font(.system(size: 13 * displayScale, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                Text(speedUnit)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(palette.secondary)
+            if isStale {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(palette.warning)
+                    .accessibilityLabel("Drive data stale")
+            } else {
+                HStack(spacing: 2) {
+                    Text("\(speed)")
+                        .font(.system(size: 13 * displayScale, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                    Text(speedUnit)
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(palette.secondary)
+                }
+                .foregroundStyle(palette.foreground)
             }
-            .foregroundStyle(palette.foreground)
         } minimal: {
-            Image(systemName: driveDialSymbol(state.dialStyleRawValue))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(palette.accent)
+            if isStale {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(palette.warning)
+                    .accessibilityLabel("Drive data stale")
+            } else {
+                Image(systemName: driveDialSymbol(state.dialStyleRawValue))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(palette.accent)
+            }
         }
-        .keylineTint(palette.accent)
+        .keylineTint(isStale ? palette.warning : palette.accent)
         .widgetURL(URL(string: "velura://drive/active"))
     }
 

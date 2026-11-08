@@ -812,12 +812,12 @@ struct ContentView: View {
         HStack(spacing: 11) {
             ZStack {
                 Circle()
-                    .fill(model.hasGPSFix ? SpeedometerStyle.mint.opacity(0.16) : SpeedometerStyle.foreground.opacity(0.07))
+                    .fill(model.isGPSReadingReliable ? SpeedometerStyle.mint.opacity(0.16) : SpeedometerStyle.foreground.opacity(0.07))
                     .frame(width: 34, height: 34)
-                Image(systemName: model.hasGPSFix ? "location.fill" : "location")
+                Image(systemName: model.isGPSReadingReliable ? "location.fill" : "location")
                     .modifier(AdaptiveFont(size: 14, weight: .semibold))
-                    .foregroundStyle(model.hasGPSFix ? SpeedometerStyle.mint : SpeedometerStyle.secondary)
-                    .symbolEffect(.pulse, options: .repeating, isActive: model.isSessionActive && !model.hasGPSFix && !reduceMotion)
+                    .foregroundStyle(model.isGPSReadingReliable ? SpeedometerStyle.mint : SpeedometerStyle.secondary)
+                    .symbolEffect(.pulse, options: .repeating, isActive: model.isSessionActive && !model.isGPSReadingReliable && !reduceMotion)
             }
 
             VStack(alignment: .leading, spacing: 3) {
@@ -835,16 +835,16 @@ struct ContentView: View {
             Spacer(minLength: 6)
 
             Circle()
-                .fill(model.hasGPSFix ? SpeedometerStyle.mint : Color.orange.opacity(0.86))
+                .fill(model.isGPSReadingReliable ? SpeedometerStyle.mint : Color.orange.opacity(0.86))
                 .frame(width: 7, height: 7)
-                .shadow(color: (model.hasGPSFix ? SpeedometerStyle.mint : Color.orange).opacity(0.55), radius: 6)
+                .shadow(color: (model.isGPSReadingReliable ? SpeedometerStyle.mint : Color.orange).opacity(0.55), radius: 6)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 20))
         .accessibilityElement(children: .combine)
-        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.hasGPSFix)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isGPSReadingReliable)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
     }
 

@@ -38,9 +38,18 @@ struct VeluraTests {
     @Test func acceptsNextPlausibleLocationAfterAnOutlier() {
         let timestamp = Date(timeIntervalSince1970: 1_000)
         let previous = location(latitude: 37, longitude: -122, accuracy: 5, speed: 5, at: timestamp)
+        let outlier = location(latitude: 37, longitude: -121.99, accuracy: 5, speed: 5, at: timestamp.addingTimeInterval(1))
         let sample = location(latitude: 37, longitude: -121.9999, accuracy: 5, speed: 5, at: timestamp.addingTimeInterval(2))
 
+        #expect(filter.issue(for: outlier, receivedAt: outlier.timestamp, previousLocation: previous) == .implausible)
         #expect(filter.issue(for: sample, receivedAt: sample.timestamp, previousLocation: previous) == nil)
+    }
+
+    @Test func keepsLastAcceptedGPSFixFreshOnlyWithinTheExistingWindow() {
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+
+        #expect(GPSLocationFilter.isFresh(lastAcceptedAt: timestamp, now: timestamp.addingTimeInterval(5)))
+        #expect(!GPSLocationFilter.isFresh(lastAcceptedAt: timestamp, now: timestamp.addingTimeInterval(5.1)))
     }
 
     @Test func migratesLegacyDriveHistoryToVersionedFiles() throws {

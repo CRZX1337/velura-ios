@@ -64,7 +64,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private let locationManager = CLLocationManager()
     private let defaults = UserDefaults.standard
     private let accelerationAttemptsStorageKey = "speedometer.acceleration.attempts"
-    private let gpsFixStaleAfter: TimeInterval = 5
+    private let gpsFixStaleAfter = GPSLocationFilter.freshnessWindow
     private var gpsFreshnessTimer: Timer?
     private var previousLocation: CLLocation?
     private var lastValidLocation: CLLocation?
@@ -104,7 +104,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     var isGPSFixStale: Bool {
         guard isSessionActive, let lastValidGPSFixAt, !locationUpdateFailed else { return false }
-        return Date().timeIntervalSince(lastValidGPSFixAt) > gpsFixStaleAfter
+        return !GPSLocationFilter.isFresh(lastAcceptedAt: lastValidGPSFixAt, now: .now)
     }
 
     private var hasCurrentGPSFix: Bool {
@@ -112,8 +112,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
               hasGPSFix,
               gpsDataQualityIssue == nil,
               let lastValidGPSFixAt else { return false }
-        return Date().timeIntervalSince(lastValidGPSFixAt) <= gpsFixStaleAfter
+        return GPSLocationFilter.isFresh(lastAcceptedAt: lastValidGPSFixAt, now: .now)
     }
+
+    var isGPSReadingReliable: Bool { hasCurrentGPSFix }
 
     var gpsStatusTitle: String {
         if isDriveStorageLoading { return "RESTORING DRIVE DATA" }
@@ -657,6 +659,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
 
         if receivedValidLocation {
+            startGPSFreshnessMonitoring()
             persistActiveDrive(force: false)
             updateDriveLiveActivity(at: receivedAt)
         }
@@ -678,11 +681,11 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func rejectGPSLocationSample(_ issue: GPSLocationIssue, at date: Date) {
+        if let lastValidGPSFixAt,
+           date.timeIntervalSince(lastValidGPSFixAt) > gpsFixStaleAfter {
+            expireGPSFix(at: date)
+        }
         gpsDataQualityIssue = issue
-        hasGPSFix = false
-        speedKmh = 0
-        previousLocation = nil
-        pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? date
         interruptAccelerationTestForGPSIssue()
         updateOverspeedWarning(triggerHaptic: false)
         persistActiveDrive(force: true)
@@ -702,7 +705,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     private func startGPSFreshnessMonitoring() {
         stopGPSFreshnessMonitoring()
-        gpsFreshnessTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        guard isSessionActive, let lastValidGPSFixAt else { return }
+        let expiresAt = lastValidGPSFixAt.addingTimeInterval(gpsFixStaleAfter)
+        let delay = max(0.01, expiresAt.timeIntervalSinceNow)
+        gpsFreshnessTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refreshGPSFreshness()
             }
@@ -716,17 +722,33 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     private func refreshGPSFreshness() {
         guard isSessionActive,
-              let lastValidGPSFixAt,
-              Date().timeIntervalSince(lastValidGPSFixAt) > gpsFixStaleAfter,
-              hasGPSFix else { return }
+              hasGPSFix,
+              let lastValidGPSFixAt else {
+            stopGPSFreshnessMonitoring()
+            return
+        }
+        let now = Date()
+        guard now.timeIntervalSince(lastValidGPSFixAt) > gpsFixStaleAfter else {
+            startGPSFreshnessMonitoring()
+            return
+        }
+        expireGPSFix(at: now)
+    }
 
+    private func expireGPSFix(at date: Date) {
+        guard isSessionActive, hasGPSFix else { return }
+        stopGPSFreshnessMonitoring()
         hasGPSFix = false
         speedKmh = 0
-        pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? Date()
+        gpsDataQualityIssue = nil
+        pendingGapStartAt = pendingGapStartAt
+            ?? lastProcessedLocationTimestamp
+            ?? lastValidGPSFixAt
+            ?? date
         previousLocation = nil
         interruptAccelerationTestForGPSIssue()
         persistActiveDrive(force: true)
-        updateDriveLiveActivity()
+        updateDriveLiveActivity(at: date)
         updateOverspeedWarning(triggerHaptic: false)
     }
 

@@ -71,17 +71,7 @@ struct ActiveDriveView: View {
         .background(appearance.background)
         .preferredColorScheme(appearance.preferredColorScheme)
         .toolbar(.hidden, for: .navigationBar)
-        .onAppear {
-            if !model.routeCoordinates.isEmpty {
-                cameraPosition = .region(routeRegion)
-            }
-        }
-        .onChange(of: model.routeCoordinates) { _, points in
-            guard !points.isEmpty else { return }
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.45)) {
-                cameraPosition = .region(routeRegion)
-            }
-        }
+        .onAppear(perform: fitRoute)
         .confirmationDialog("End this drive?", isPresented: $showingEndConfirmation, titleVisibility: .visible) {
             Button("End drive and save", role: .destructive) {
                 model.finishSession()
@@ -122,6 +112,13 @@ struct ActiveDriveView: View {
         .accessibilityLabel("Live drive route map")
     }
 
+    private func fitRoute() {
+        guard !model.routeCoordinates.isEmpty else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.45)) {
+            cameraPosition = .region(routeRegion)
+        }
+    }
+
     private var header: some View {
         HStack {
             Button(action: onClose) {
@@ -140,19 +137,34 @@ struct ActiveDriveView: View {
                 .foregroundStyle(SpeedometerStyle.foreground)
             Spacer(minLength: 8)
 
-            Menu {
-                Button("End drive", systemImage: "stop.fill", role: .destructive) {
-                    showingEndConfirmation = true
+            HStack(spacing: 8) {
+                Button(action: fitRoute) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                        .frame(width: 48, height: 48)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(SpeedometerStyle.foreground.opacity(0.18), lineWidth: 1))
                 }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                    .frame(width: 54, height: 54)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().stroke(SpeedometerStyle.foreground.opacity(0.18), lineWidth: 1))
+                .buttonStyle(.plain)
+                .disabled(model.routeCoordinates.isEmpty)
+                .accessibilityLabel("Fit recorded route")
+                .accessibilityHint("Fits the map to the latest recorded route")
+
+                Menu {
+                    Button("End drive", systemImage: "stop.fill", role: .destructive) {
+                        showingEndConfirmation = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                        .frame(width: 54, height: 54)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(SpeedometerStyle.foreground.opacity(0.18), lineWidth: 1))
+                }
+                .accessibilityLabel("More drive options")
             }
-            .accessibilityLabel("More drive options")
         }
     }
 

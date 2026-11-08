@@ -171,9 +171,9 @@ struct SpeedDashboardView: View {
                 VStack(alignment: .leading, spacing: 7) {
                     HStack(spacing: 10) {
                         Circle()
-                            .fill(model.hasGPSFix ? SpeedometerStyle.mint : Color.orange.opacity(0.9))
+                            .fill(model.isGPSReadingReliable ? SpeedometerStyle.mint : Color.orange.opacity(0.9))
                             .frame(width: 10, height: 10)
-                            .shadow(color: (model.hasGPSFix ? SpeedometerStyle.mint : Color.orange).opacity(0.5), radius: 5)
+                            .shadow(color: (model.isGPSReadingReliable ? SpeedometerStyle.mint : Color.orange).opacity(0.5), radius: 5)
                         Text(model.gpsStatusTitle)
                             .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
                             .foregroundStyle(SpeedometerStyle.foreground.opacity(0.92))
@@ -188,9 +188,9 @@ struct SpeedDashboardView: View {
             } else {
                 HStack(spacing: 10) {
                     Circle()
-                        .fill(model.hasGPSFix ? SpeedometerStyle.mint : Color.orange.opacity(0.9))
+                        .fill(model.isGPSReadingReliable ? SpeedometerStyle.mint : Color.orange.opacity(0.9))
                         .frame(width: 10, height: 10)
-                        .shadow(color: (model.hasGPSFix ? SpeedometerStyle.mint : Color.orange).opacity(0.5), radius: 5)
+                        .shadow(color: (model.isGPSReadingReliable ? SpeedometerStyle.mint : Color.orange).opacity(0.5), radius: 5)
 
                     Text(model.gpsStatusTitle)
                         .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
@@ -216,12 +216,12 @@ struct SpeedDashboardView: View {
         .background(SpeedometerStyle.foreground.opacity(0.025), in: Capsule())
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)
-        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.hasGPSFix)
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isGPSReadingReliable)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
     }
 
     private var gpsDetail: String {
-        if model.hasGPSFix {
+        if model.isGPSReadingReliable {
             return "±\(Int(model.horizontalAccuracy.rounded())) m"
         }
         if model.gpsStatusDetail == "Allow location access in Settings" { return "Open Settings" }

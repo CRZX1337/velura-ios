@@ -95,6 +95,7 @@ final class DriveLiveActivityController {
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.velura.app", category: "LiveActivity")
     private let minimumUpdateInterval: TimeInterval = 4
+    private let activeContentStaleAfter: TimeInterval = 15
     private var activity: Activity<VeluraDriveActivityAttributes>?
     private var currentDriveID: UUID?
     private var requestAttempted = false
@@ -204,7 +205,7 @@ final class DriveLiveActivityController {
         requestAttempted = true
         requestInFlightDriveIDs.insert(driveID)
         let attributes = VeluraDriveActivityAttributes(driveID: driveID, startedAt: startedAt)
-        let initialContent = ActivityContent(state: state, staleDate: nil)
+        let initialContent = activityContent(for: state)
 
         Task { [weak self] in
             do {
@@ -299,6 +300,13 @@ final class DriveLiveActivityController {
         }
     }
 
+    private func activityContent(
+        for state: VeluraDriveActivityAttributes.ContentState
+    ) -> ActivityContent<VeluraDriveActivityAttributes.ContentState> {
+        let staleDate = state.isEnded ? nil : Date().addingTimeInterval(activeContentStaleAfter)
+        return ActivityContent(state: state, staleDate: staleDate)
+    }
+
     private func endImmediately(_ activity: Activity<VeluraDriveActivityAttributes>) {
         Task {
             await activity.end(nil, dismissalPolicy: .immediate)
@@ -356,7 +364,7 @@ final class DriveLiveActivityController {
         guard let activity, let state = pendingState else { return }
         pendingState = nil
         lastSubmittedAt = Date()
-        let content = ActivityContent(state: state, staleDate: nil)
+        let content = activityContent(for: state)
         Task {
             await activity.update(content)
         }
