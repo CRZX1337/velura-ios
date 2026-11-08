@@ -50,8 +50,7 @@ struct DriveInterruptionGap: Codable, Equatable, Identifiable {
     }
 }
 
-/// A drive that has been started but not finished yet. It is written to disk
-/// continuously so a suspension or termination does not lose the trip.
+/// The complete in-memory representation used when recovering an active drive.
 struct ActiveDriveSnapshot: Codable, Equatable {
     let sessionID: UUID?
     let startedAt: Date
@@ -123,37 +122,158 @@ struct ActiveDriveSnapshot: Codable, Equatable {
     }
 }
 
+/// The lightweight active-drive checkpoint. Route points live in an append-only journal.
+struct ActiveDriveMetadata: Codable, Equatable {
+    let sessionID: UUID?
+    let startedAt: Date
+    let elapsedSeconds: TimeInterval
+    let distanceKm: Double
+    let topSpeedKmh: Double
+    let routePointCount: Int
+    let updatedAt: Date
+    let lastLocationAt: Date?
+    let routeSegmentIndex: Int
+    let interruptionGaps: [DriveInterruptionGap]
+    let pendingGapStartAt: Date?
+
+    init(
+        sessionID: UUID?,
+        startedAt: Date,
+        elapsedSeconds: TimeInterval,
+        distanceKm: Double,
+        topSpeedKmh: Double,
+        routePointCount: Int,
+        updatedAt: Date,
+        lastLocationAt: Date?,
+        routeSegmentIndex: Int,
+        interruptionGaps: [DriveInterruptionGap],
+        pendingGapStartAt: Date?
+    ) {
+        self.sessionID = sessionID
+        self.startedAt = startedAt
+        self.elapsedSeconds = elapsedSeconds
+        self.distanceKm = distanceKm
+        self.topSpeedKmh = topSpeedKmh
+        self.routePointCount = routePointCount
+        self.updatedAt = updatedAt
+        self.lastLocationAt = lastLocationAt
+        self.routeSegmentIndex = routeSegmentIndex
+        self.interruptionGaps = interruptionGaps
+        self.pendingGapStartAt = pendingGapStartAt
+    }
+
+    init(snapshot: ActiveDriveSnapshot, routePointCount: Int) {
+        self.init(
+            sessionID: snapshot.sessionID,
+            startedAt: snapshot.startedAt,
+            elapsedSeconds: snapshot.elapsedSeconds,
+            distanceKm: snapshot.distanceKm,
+            topSpeedKmh: snapshot.topSpeedKmh,
+            routePointCount: routePointCount,
+            updatedAt: snapshot.updatedAt,
+            lastLocationAt: snapshot.lastLocationAt,
+            routeSegmentIndex: snapshot.routeSegmentIndex,
+            interruptionGaps: snapshot.interruptionGaps,
+            pendingGapStartAt: snapshot.pendingGapStartAt
+        )
+    }
+
+    func withRoutePointCount(_ count: Int) -> ActiveDriveMetadata {
+        ActiveDriveMetadata(
+            sessionID: sessionID,
+            startedAt: startedAt,
+            elapsedSeconds: elapsedSeconds,
+            distanceKm: distanceKm,
+            topSpeedKmh: topSpeedKmh,
+            routePointCount: count,
+            updatedAt: updatedAt,
+            lastLocationAt: lastLocationAt,
+            routeSegmentIndex: routeSegmentIndex,
+            interruptionGaps: interruptionGaps,
+            pendingGapStartAt: pendingGapStartAt
+        )
+    }
+
+    func makeSnapshot(routeCoordinates: [DriveRoutePoint]) -> ActiveDriveSnapshot {
+        ActiveDriveSnapshot(
+            sessionID: sessionID,
+            startedAt: startedAt,
+            elapsedSeconds: elapsedSeconds,
+            distanceKm: distanceKm,
+            topSpeedKmh: topSpeedKmh,
+            routeCoordinates: routeCoordinates,
+            updatedAt: updatedAt,
+            lastLocationAt: lastLocationAt,
+            routeSegmentIndex: routeSegmentIndex,
+            interruptionGaps: interruptionGaps,
+            pendingGapStartAt: pendingGapStartAt
+        )
+    }
+}
+
 final class ActiveDriveStore {
     static let shared = ActiveDriveStore()
 
-    private let fileURL: URL
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let storage: ActiveDriveFileStorage
+    private let ioQueue = DispatchQueue(label: "com.velura.active-drive-storage", qos: .utility)
 
-    private init() {
-        let baseURL = (try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )) ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let directory = baseURL.appendingPathComponent("Velura", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        fileURL = directory.appendingPathComponent("active-drive.json")
+    init(baseDirectoryURL: URL? = nil) {
+        storage = ActiveDriveFileStorage(baseDirectoryURL: baseDirectoryURL)
     }
 
-    func load() -> ActiveDriveSnapshot? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? decoder.decode(ActiveDriveSnapshot.self, from: data)
+    func load(completion: @escaping (ActiveDriveLoadResult) -> Void) {
+        let storage = self.storage
+        ioQueue.async {
+            let result = storage.load()
+            DispatchQueue.main.async { completion(result) }
+        }
     }
 
-    func save(_ snapshot: ActiveDriveSnapshot) {
-        guard let data = try? encoder.encode(snapshot) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+    func save(_ metadata: ActiveDriveMetadata, completion: ((String?) -> Void)? = nil) {
+        let storage = self.storage
+        ioQueue.async {
+            let errorMessage: String?
+            do {
+                try storage.save(metadata)
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            DispatchQueue.main.async { completion?(errorMessage) }
+        }
     }
 
-    func clear() {
-        try? FileManager.default.removeItem(at: fileURL)
+    func appendRoutePoint(
+        sessionID: UUID,
+        index: Int,
+        point: DriveRoutePoint,
+        completion: ((String?) -> Void)? = nil
+    ) {
+        let storage = self.storage
+        ioQueue.async {
+            let errorMessage: String?
+            do {
+                try storage.appendRoutePoint(sessionID: sessionID, index: index, point: point)
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            DispatchQueue.main.async { completion?(errorMessage) }
+        }
+    }
+
+    func clear(completion: ((String?) -> Void)? = nil) {
+        let storage = self.storage
+        ioQueue.async {
+            let errorMessage: String?
+            do {
+                try storage.clear()
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            DispatchQueue.main.async { completion?(errorMessage) }
+        }
     }
 }
 
@@ -222,42 +342,123 @@ final class DriveHistoryStore: ObservableObject {
     static let shared = DriveHistoryStore()
 
     @Published private(set) var drives: [DriveRecord] = []
+    @Published private(set) var isLoading = true
+    @Published private(set) var persistenceErrorMessage: String?
 
-    private let storageKey = "velura.driveHistory"
-    private let defaults = UserDefaults.standard
+    private let fileStorage = DriveHistoryFileStorage()
+    private let ioQueue = DispatchQueue(label: "com.velura.drive-history-storage", qos: .utility)
+    private var mutationGeneration = 0
+    private var loadCompletionHandlers: [() -> Void] = []
 
     private init() {
-        if let data = defaults.data(forKey: storageKey),
-           let storedDrives = try? JSONDecoder().decode([DriveRecord].self, from: data) {
-            drives = storedDrives.sorted { $0.date > $1.date }
+        loadFromDisk()
+    }
+
+    func whenLoaded(_ completion: @escaping () -> Void) {
+        if isLoading {
+            loadCompletionHandlers.append(completion)
+        } else {
+            completion()
         }
     }
 
-    func add(_ drive: DriveRecord) {
-        guard !drives.contains(where: { $0.id == drive.id }) else { return }
+    func add(_ drive: DriveRecord, completion: ((String?) -> Void)? = nil) {
+        guard !drives.contains(where: { $0.id == drive.id }) else {
+            completion?(nil)
+            return
+        }
         drives.append(drive)
         drives.sort { $0.date > $1.date }
-        persist()
+        enqueuePersistence({ storage in
+            try storage.upsert(drive)
+        }, completion: completion)
     }
 
     func delete(_ id: UUID) {
+        guard drives.contains(where: { $0.id == id }) else { return }
         drives.removeAll { $0.id == id }
-        persist()
+        enqueuePersistence { storage in
+            try storage.delete(id)
+        }
     }
 
     func deleteRoute(for id: UUID) {
         guard let index = drives.firstIndex(where: { $0.id == id }) else { return }
-        drives[index].routeCoordinates.removeAll()
-        persist()
+        var updatedDrive = drives[index]
+        updatedDrive.routeCoordinates.removeAll()
+        drives[index] = updatedDrive
+        enqueuePersistence { storage in
+            try storage.upsert(updatedDrive)
+        }
     }
 
     func clear() {
         drives.removeAll()
-        persist()
+        enqueuePersistence { storage in
+            try storage.clear()
+        }
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(drives) else { return }
-        defaults.set(data, forKey: storageKey)
+    func dismissPersistenceError() {
+        persistenceErrorMessage = nil
+    }
+
+    private func loadFromDisk() {
+        let storage = fileStorage
+        let loadGeneration = mutationGeneration
+        ioQueue.async { [weak self] in
+            let result = storage.load()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if self.mutationGeneration == loadGeneration {
+                    self.drives = result.drives
+                    self.persistenceErrorMessage = result.errorMessage
+                } else if let errorMessage = result.errorMessage {
+                    self.persistenceErrorMessage = errorMessage
+                }
+                self.isLoading = false
+                let completions = self.loadCompletionHandlers
+                self.loadCompletionHandlers.removeAll()
+                completions.forEach { $0() }
+            }
+        }
+    }
+
+    private func enqueuePersistence(
+        _ operation: @escaping (DriveHistoryFileStorage) throws -> Void,
+        completion: ((String?) -> Void)? = nil
+    ) {
+        mutationGeneration += 1
+        let generation = mutationGeneration
+        let storage = fileStorage
+        ioQueue.async { [weak self] in
+            let errorMessage: String?
+            let recovery: DriveHistoryLoadResult?
+            do {
+                try operation(storage)
+                errorMessage = nil
+                recovery = nil
+            } catch {
+                errorMessage = error.localizedDescription
+                recovery = storage.load()
+            }
+
+            DispatchQueue.main.async {
+                guard let self else {
+                    completion?(errorMessage)
+                    return
+                }
+                if let errorMessage, self.mutationGeneration == generation {
+                    if let recovery {
+                        self.drives = recovery.drives
+                    }
+                    let recoveryError = recovery?.errorMessage
+                    self.persistenceErrorMessage = recoveryError.map {
+                        "\(errorMessage) \($0)"
+                    } ?? errorMessage
+                }
+                completion?(errorMessage)
+            }
+        }
     }
 }

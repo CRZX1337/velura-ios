@@ -22,6 +22,7 @@ struct ContentView: View {
     @ObservedObject private var appearance = AppAppearance.shared
     @ObservedObject private var dashboardLayout = AppDashboardLayout.shared
     @StateObject private var model = SpeedometerModel()
+    @StateObject private var driveHistoryStore = DriveHistoryStore.shared
     @AppStorage("speedometer.selectedRange") private var selectedRange = 50
     @AppStorage("speedometer.customRange") private var customRange = 160
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
@@ -72,6 +73,21 @@ struct ContentView: View {
             ActiveDriveView(model: model) {
                 showsActiveDriveMap = false
             }
+        }
+        .alert("Drive storage issue", isPresented: Binding(
+            get: { model.drivePersistenceErrorMessage != nil || driveHistoryStore.persistenceErrorMessage != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                model.dismissDrivePersistenceError()
+                driveHistoryStore.dismissPersistenceError()
+            }
+        )) {
+            Button("OK", role: .cancel) {
+                model.dismissDrivePersistenceError()
+                driveHistoryStore.dismissPersistenceError()
+            }
+        } message: {
+            Text(model.drivePersistenceErrorMessage ?? driveHistoryStore.persistenceErrorMessage ?? "Drive data could not be saved.")
         }
     }
 

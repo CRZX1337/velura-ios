@@ -321,13 +321,14 @@ struct SpeedDashboardView: View {
                 .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.23)).interactive(), in: .capsule)
             }
             .buttonStyle(.plain)
+            .disabled(model.isDriveStorageLoading || model.isFinishingSession)
             .accessibilityHint(model.isSessionActive ? "Pauses GPS tracking and drive statistics" : "Starts or resumes GPS speed and trip tracking")
 
             if model.hasUnfinishedSession {
                 Button {
                     model.finishSession()
                 } label: {
-                    Text("Finish")
+                    Text(model.isFinishingSession ? "Saving…" : "Finish")
                         .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .frame(maxWidth: .infinity)
@@ -336,6 +337,7 @@ struct SpeedDashboardView: View {
                         .glassEffect(.regular.interactive(), in: .capsule)
                 }
                 .buttonStyle(.plain)
+                .disabled(model.isFinishingSession)
                 .accessibilityLabel("Finish and save this drive")
             }
         }
@@ -345,6 +347,8 @@ struct SpeedDashboardView: View {
     }
 
     private var primaryActionTitle: String {
+        if model.isDriveStorageLoading { return "Restoring drive data" }
+        if model.isFinishingSession { return "Saving drive" }
         if model.isSessionActive { return "Pause drive" }
         if model.hasUnfinishedSession { return "Resume drive" }
         return "Start drive"

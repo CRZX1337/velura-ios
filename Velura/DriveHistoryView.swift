@@ -127,7 +127,13 @@ struct DriveHistoryView: View {
                         }
                         filterControl(compact: compactLayout)
 
-                        if dayGroups.isEmpty {
+                        if store.isLoading {
+                            ProgressView("Loading saved drives")
+                                .modifier(AdaptiveFont(size: 14, weight: .medium, design: .rounded))
+                                .foregroundStyle(SpeedometerStyle.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 42)
+                        } else if dayGroups.isEmpty {
                             if !normalizedSearchQuery.isEmpty {
                                 noMatchesState
                                     .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.98)), reduceMotion: reduceMotion))

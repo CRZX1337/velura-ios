@@ -47,6 +47,9 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     @Published private(set) var isSessionActive = false
     @Published private(set) var isOverspeedWarningActive = false
     @Published private(set) var hasUnfinishedSession = false
+    @Published private(set) var isDriveStorageLoading = true
+    @Published private(set) var isFinishingSession = false
+    @Published var drivePersistenceErrorMessage: String?
     @Published var showDriveRecoveryChoice = false
     @Published private(set) var accelerationPreset = 50
     @Published private(set) var customAccelerationTargetKmh = 80
@@ -93,7 +96,9 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         locationManager.activityType = .automotiveNavigation
         locationManager.pausesLocationUpdatesAutomatically = false
         restoreAccelerationSettings()
-        restoreActiveDriveSnapshot()
+        DriveHistoryStore.shared.whenLoaded { [weak self] in
+            self?.restoreActiveDriveSnapshot()
+        }
         observeAppLifecycle()
     }
 
@@ -111,6 +116,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     var gpsStatusTitle: String {
+        if isDriveStorageLoading { return "RESTORING DRIVE DATA" }
         if hasCurrentGPSFix { return "GPS LOCKED" }
         switch authorizationStatus {
         case .denied, .restricted:
@@ -128,6 +134,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     var gpsStatusDetail: String {
+        if isDriveStorageLoading { return "Restoring saved drive data" }
         if hasCurrentGPSFix { return "Accuracy ±\(Int(horizontalAccuracy.rounded())) m" }
         switch authorizationStatus {
         case .denied, .restricted:
@@ -297,6 +304,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func startSession() {
+        guard !isDriveStorageLoading, !isFinishingSession else { return }
         guard !isAwaitingDriveRecoveryDecision else {
             showDriveRecoveryChoice = true
             return
@@ -350,6 +358,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func startAccelerationTest() {
+        guard !isDriveStorageLoading, !isFinishingSession else { return }
         guard !isAwaitingDriveRecoveryDecision else {
             showDriveRecoveryChoice = true
             return
@@ -445,10 +454,22 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     func finishSession() {
-        guard hasUnfinishedSession else { return }
+        guard hasUnfinishedSession, !isFinishingSession else { return }
         if isSessionActive {
+            let pausedAt = Date()
+            if let sessionStartedAt {
+                elapsedSeconds += max(0, pausedAt.timeIntervalSince(sessionStartedAt))
+            }
+            sessionStartedAt = nil
+            isSessionActive = false
+            stopGPSFreshnessMonitoring()
+            hasGPSFix = false
+            lastValidGPSFixAt = nil
+            speedKmh = 0
+            previousLocation = nil
             configureBackgroundLocationUpdates(active: false)
             locationManager.stopUpdatingLocation()
+            updateOverspeedWarning(triggerHaptic: false)
         }
 
         let finishedAt = Date()
@@ -457,22 +478,38 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         completePendingGap(at: finishedAt)
         let duration = elapsedTime(at: finishedAt)
-        if duration > 0 {
-            DriveHistoryStore.shared.add(DriveRecord(
-                id: driveID ?? UUID(),
-                date: driveStartedAt ?? finishedAt,
-                duration: duration,
-                distanceKm: distanceKm,
-                topSpeedKmh: topSpeedKmh,
-                routeCoordinates: routeCoordinates.count >= 2 ? routeCoordinates : [],
-                interruptionGaps: interruptionGaps
-            ))
+        guard duration > 0 else {
+            endDriveLiveActivity(at: finishedAt)
+            resetSession()
+            return
         }
-        endDriveLiveActivity(at: finishedAt)
-        resetSession()
+
+        let drive = DriveRecord(
+            id: driveID ?? UUID(),
+            date: driveStartedAt ?? finishedAt,
+            duration: duration,
+            distanceKm: distanceKm,
+            topSpeedKmh: topSpeedKmh,
+            routeCoordinates: routeCoordinates.count >= 2 ? routeCoordinates : [],
+            interruptionGaps: interruptionGaps
+        )
+        isFinishingSession = true
+        updateDriveLiveActivity(at: finishedAt)
+        persistActiveDrive(force: true)
+        DriveHistoryStore.shared.add(drive) { [weak self] errorMessage in
+            guard let self, self.hasUnfinishedSession else { return }
+            self.isFinishingSession = false
+            guard let errorMessage else {
+                self.endDriveLiveActivity(at: finishedAt)
+                self.resetSession()
+                return
+            }
+            self.drivePersistenceErrorMessage = "Completed drive couldn't be saved. \(errorMessage)"
+        }
     }
 
     func resetSession() {
+        guard !isFinishingSession else { return }
         if hasUnfinishedSession {
             endDriveLiveActivity(at: .now)
         }
@@ -491,7 +528,11 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         routeSegmentIndex = 0
         interruptionGaps.removeAll()
         pendingGapStartAt = nil
-        ActiveDriveStore.shared.clear()
+        ActiveDriveStore.shared.clear { [weak self] errorMessage in
+            guard let errorMessage else { return }
+            self?.drivePersistenceErrorMessage = "Active drive data couldn't be cleared. \(errorMessage)"
+        }
+        isFinishingSession = false
         lastSnapshotWriteAt = .distantPast
         if accelerationState == .waitingForMovement || accelerationState == .timing {
             resetAccelerationTest()
@@ -611,7 +652,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
 
         if receivedValidLocation {
-            persistActiveDrive(force: true)
+            persistActiveDrive(force: false)
             updateDriveLiveActivity(at: receivedAt)
         }
     }
@@ -753,12 +794,23 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             if distance < 2 || (!force && distance < 8 && timeSinceLastPoint < 8) { return }
         }
 
-        routeCoordinates.append(DriveRoutePoint(
+        let point = DriveRoutePoint(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
             timestamp: location.timestamp,
             segmentIndex: routeSegmentIndex
-        ))
+        )
+        routeCoordinates.append(point)
+        if hasUnfinishedSession, let driveID {
+            ActiveDriveStore.shared.appendRoutePoint(
+                sessionID: driveID,
+                index: routeCoordinates.count - 1,
+                point: point
+            ) { [weak self] errorMessage in
+                guard let errorMessage else { return }
+                self?.drivePersistenceErrorMessage = "Active route couldn't be saved. \(errorMessage)"
+            }
+        }
     }
 
     private var supportsBackgroundLocation: Bool {
@@ -801,58 +853,81 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func persistActiveDrive(force: Bool) {
-        guard hasUnfinishedSession, let driveStartedAt else { return }
+        guard hasUnfinishedSession, let driveStartedAt, let driveID else { return }
         let now = Date()
         guard force || now.timeIntervalSince(lastSnapshotWriteAt) >= 2 else { return }
         lastSnapshotWriteAt = now
-        ActiveDriveStore.shared.save(ActiveDriveSnapshot(
+        let metadata = ActiveDriveMetadata(
             sessionID: driveID,
             startedAt: driveStartedAt,
             elapsedSeconds: elapsedTime(at: now),
             distanceKm: distanceKm,
             topSpeedKmh: topSpeedKmh,
-            routeCoordinates: routeCoordinates,
+            routePointCount: routeCoordinates.count,
             updatedAt: now,
             lastLocationAt: lastProcessedLocationTimestamp,
             routeSegmentIndex: routeSegmentIndex,
             interruptionGaps: interruptionGaps,
             pendingGapStartAt: pendingGapStartAt
-        ))
+        )
+        ActiveDriveStore.shared.save(metadata) { [weak self] errorMessage in
+            guard let errorMessage else { return }
+            self?.drivePersistenceErrorMessage = "Active drive couldn't be saved. \(errorMessage)"
+        }
     }
 
     private func restoreActiveDriveSnapshot() {
-        guard let snapshot = ActiveDriveStore.shared.load() else { return }
-        let alreadyCompleted: Bool
-        if let sessionID = snapshot.sessionID {
-            alreadyCompleted = DriveHistoryStore.shared.drives.contains { $0.id == sessionID }
-        } else {
-            alreadyCompleted = DriveHistoryStore.shared.drives.contains {
-                abs($0.date.timeIntervalSince(snapshot.startedAt)) < 1
+        ActiveDriveStore.shared.load { [weak self] result in
+            guard let self else { return }
+            if let errorMessage = result.errorMessage {
+                self.drivePersistenceErrorMessage = "Saved drive data couldn't be restored. \(errorMessage)"
             }
-        }
-        guard !alreadyCompleted else {
-            ActiveDriveStore.shared.clear()
-            return
-        }
+            guard let snapshot = result.snapshot else {
+                self.isDriveStorageLoading = false
+                return
+            }
 
-        hasUnfinishedSession = true
-        driveID = snapshot.sessionID ?? UUID()
-        driveStartedAt = snapshot.startedAt
-        elapsedSeconds = snapshot.elapsedSeconds
-        distanceKm = snapshot.distanceKm
-        topSpeedKmh = snapshot.topSpeedKmh
-        routeCoordinates = snapshot.routeCoordinates
-        lastProcessedLocationTimestamp = snapshot.lastLocationAt ?? snapshot.routeCoordinates.last?.timestamp
-        routeSegmentIndex = max(snapshot.routeSegmentIndex, snapshot.routeCoordinates.map(\.segmentIndex).max() ?? 0)
-        interruptionGaps = snapshot.interruptionGaps
-        pendingGapStartAt = snapshot.pendingGapStartAt
-            ?? lastProcessedLocationTimestamp
-            ?? snapshot.updatedAt
-        previousLocation = nil
-        lastValidLocation = nil
-        lastSnapshotWriteAt = snapshot.updatedAt
-        isAwaitingDriveRecoveryDecision = true
-        showDriveRecoveryChoice = true
+            let alreadyCompleted: Bool
+            if let sessionID = snapshot.sessionID {
+                alreadyCompleted = DriveHistoryStore.shared.drives.contains { $0.id == sessionID }
+            } else {
+                alreadyCompleted = DriveHistoryStore.shared.drives.contains {
+                    abs($0.date.timeIntervalSince(snapshot.startedAt)) < 1
+                }
+            }
+            guard !alreadyCompleted else {
+                ActiveDriveStore.shared.clear { [weak self] errorMessage in
+                    guard let errorMessage else { return }
+                    self?.drivePersistenceErrorMessage = "Completed drive data couldn't be cleared. \(errorMessage)"
+                }
+                self.isDriveStorageLoading = false
+                return
+            }
+
+            self.hasUnfinishedSession = true
+            self.driveID = snapshot.sessionID ?? UUID()
+            self.driveStartedAt = snapshot.startedAt
+            self.elapsedSeconds = snapshot.elapsedSeconds
+            self.distanceKm = snapshot.distanceKm
+            self.topSpeedKmh = snapshot.topSpeedKmh
+            self.routeCoordinates = snapshot.routeCoordinates
+            self.lastProcessedLocationTimestamp = snapshot.lastLocationAt ?? snapshot.routeCoordinates.last?.timestamp
+            self.routeSegmentIndex = max(snapshot.routeSegmentIndex, snapshot.routeCoordinates.map(\.segmentIndex).max() ?? 0)
+            self.interruptionGaps = snapshot.interruptionGaps
+            self.pendingGapStartAt = snapshot.pendingGapStartAt
+                ?? self.lastProcessedLocationTimestamp
+                ?? snapshot.updatedAt
+            self.previousLocation = nil
+            self.lastValidLocation = nil
+            self.lastSnapshotWriteAt = snapshot.updatedAt
+            self.isAwaitingDriveRecoveryDecision = true
+            self.showDriveRecoveryChoice = true
+            self.isDriveStorageLoading = false
+        }
+    }
+
+    func dismissDrivePersistenceError() {
+        drivePersistenceErrorMessage = nil
     }
 
     private func restoreAccelerationSettings() {
