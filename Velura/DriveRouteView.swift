@@ -5,13 +5,14 @@ import UIKit
 struct DriveRouteView: View {
     let drive: DriveRecord
     let onDeleteRoute: () -> Void
+    let onBack: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject private var appearance = AppAppearance.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var routeCoordinates: [DriveRoutePoint]
+    @State private var showsRecordingGaps = true
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var showingDeleteConfirmation = false
     @State private var isPreparingShare = false
@@ -19,9 +20,10 @@ struct DriveRouteView: View {
     @State private var showingShareError = false
     @State private var shareErrorMessage = ""
 
-    init(drive: DriveRecord, onDeleteRoute: @escaping () -> Void) {
+    init(drive: DriveRecord, onDeleteRoute: @escaping () -> Void, onBack: @escaping () -> Void) {
         self.drive = drive
         self.onDeleteRoute = onDeleteRoute
+        self.onBack = onBack
         _routeCoordinates = State(initialValue: drive.routeCoordinates)
     }
 
@@ -247,7 +249,7 @@ struct DriveRouteView: View {
     }
 
     private var backButton: some View {
-        Button { dismiss() } label: {
+        Button(action: onBack) {
             Image(systemName: "chevron.left")
                 .modifier(AdaptiveFont(size: 16, weight: .semibold))
                 .foregroundStyle(SpeedometerStyle.foreground)
@@ -436,21 +438,46 @@ struct DriveRouteView: View {
 
     private var interruptionGapNotice: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Label("Recording gaps", systemImage: "location.slash")
-                .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+            Button {
+                withAnimation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion)) {
+                    showsRecordingGaps.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Label("Recording gaps", systemImage: "location.slash")
+                        .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                    Text("\(drive.interruptionGaps.count)")
+                        .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                    Spacer(minLength: 4)
+                    Text(showsRecordingGaps ? "Hide details" : "Show details")
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                    Image(systemName: showsRecordingGaps ? "chevron.up" : "chevron.down")
+                        .modifier(AdaptiveFont(size: 10, weight: .semibold))
+                }
                 .foregroundStyle(SpeedometerStyle.warning)
-
-            ForEach(drive.interruptionGaps) { gap in
-                Text("\(gap.startAt.formatted(date: .abbreviated, time: .shortened)) – \(gap.endAt.formatted(date: .abbreviated, time: .shortened))")
-                    .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                    .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showsRecordingGaps ? "Hide recording gap details" : "Show recording gap details")
+            .accessibilityValue("\(drive.interruptionGaps.count) recording gaps")
 
-            Text("No speed, distance, or route points were estimated for these intervals.")
-                .modifier(AdaptiveFont(size: 11, weight: .regular, design: .rounded))
-                .foregroundStyle(SpeedometerStyle.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if showsRecordingGaps {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(drive.interruptionGaps) { gap in
+                        Text("\(gap.startAt.formatted(date: .abbreviated, time: .shortened)) – \(gap.endAt.formatted(date: .abbreviated, time: .shortened))")
+                            .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Text("No speed, distance, or route points were estimated for these intervals.")
+                        .modifier(AdaptiveFont(size: 11, weight: .regular, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

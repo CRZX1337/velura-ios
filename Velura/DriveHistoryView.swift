@@ -727,6 +727,7 @@ private struct DriveDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingDeleteConfirmation = false
+    @State private var showingRoute = false
     @State private var routeCoordinates: [DriveRoutePoint]
 
     init(drive: DriveRecord, onDeleteRoute: @escaping () -> Void, onDelete: @escaping () -> Void) {
@@ -805,11 +806,8 @@ private struct DriveDetailView: View {
                     .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .glassEffect(.regular, in: .rect(cornerRadius: 22))
 
-                    NavigationLink {
-                        DriveRouteView(drive: driveWithCurrentRoute) {
-                            onDeleteRoute()
-                            routeCoordinates.removeAll()
-                        }
+                    Button {
+                        showingRoute = true
                     } label: {
                         Label("View route", systemImage: "map.fill")
                             .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
@@ -851,6 +849,16 @@ private struct DriveDetailView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .tabBar)
         .preferredColorScheme(appearance.preferredColorScheme)
+        .navigationDestination(isPresented: $showingRoute) {
+            DriveRouteView(
+                drive: driveWithCurrentRoute,
+                onDeleteRoute: {
+                    onDeleteRoute()
+                    routeCoordinates.removeAll()
+                },
+                onBack: { showingRoute = false }
+            )
+        }
     }
 
     private var detailDivider: some View {
