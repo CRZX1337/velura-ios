@@ -108,10 +108,61 @@ final class DriveLiveActivityController {
 
     private init() { }
 
+    func reconcile(
+        activeDriveID: UUID?,
+        state: VeluraDriveActivityAttributes.ContentState?,
+        completedDrives: [DriveRecord]
+    ) {
+        updateTask?.cancel()
+        updateTask = nil
+        activityStateTask?.cancel()
+        activityStateTask = nil
+        activity = nil
+        currentDriveID = activeDriveID
+        requestAttempted = false
+        isDismissedForCurrentDrive = false
+        pendingState = nil
+        lastSubmittedAt = .distantPast
+
+        let completedDrivesByID = Dictionary(uniqueKeysWithValues: completedDrives.map { ($0.id, $0) })
+        let existingActivities = Activity<VeluraDriveActivityAttributes>.activities
+        let liveActivities = existingActivities.filter { $0.activityState == .active || $0.activityState == .stale }
+        let matchingActivities = activeDriveID.map { driveID in
+            liveActivities.filter { $0.attributes.driveID == driveID }
+        } ?? []
+        let matchingActivity = matchingActivities.first
+
+        for existingActivity in liveActivities {
+            if existingActivity.id == matchingActivity?.id { continue }
+
+            if let activeDriveID, existingActivity.attributes.driveID == activeDriveID {
+                endImmediately(existingActivity)
+            } else if let completedDrive = completedDrivesByID[existingActivity.attributes.driveID] {
+                end(existingActivity, with: completedState(from: existingActivity.content.state, drive: completedDrive))
+            } else {
+                endImmediately(existingActivity)
+            }
+        }
+
+        guard let activeDriveID else { return }
+        if let matchingActivity {
+            activity = matchingActivity
+            observeActivityState(of: matchingActivity, driveID: activeDriveID)
+            if let state {
+                scheduleUpdate(state, immediately: true)
+            }
+        } else {
+            isDismissedForCurrentDrive = existingActivities.contains {
+                $0.attributes.driveID == activeDriveID && $0.activityState == .dismissed
+            }
+        }
+    }
+
     func startOrUpdate(
         driveID: UUID,
         startedAt: Date,
-        state: VeluraDriveActivityAttributes.ContentState
+        state: VeluraDriveActivityAttributes.ContentState,
+        allowRequest: Bool = true
     ) {
         if currentDriveID != driveID {
             guard UIApplication.shared.applicationState == .active else { return }
@@ -145,7 +196,8 @@ final class DriveLiveActivityController {
             return
         }
 
-        guard !requestAttempted,
+        guard allowRequest,
+              !requestAttempted,
               ActivityAuthorizationInfo().areActivitiesEnabled,
               UIApplication.shared.applicationState == .active else { return }
 
@@ -199,33 +251,85 @@ final class DriveLiveActivityController {
     }
 
     func end(driveID: UUID, state: VeluraDriveActivityAttributes.ContentState) {
-        guard currentDriveID == driveID else { return }
+        let isCurrentDrive = currentDriveID == driveID
+        if isCurrentDrive {
+            updateTask?.cancel()
+            updateTask = nil
+            pendingState = nil
+            currentDriveID = nil
+            requestAttempted = false
+            isDismissedForCurrentDrive = false
+        }
 
-        pendingEndingStates[driveID] = state
-        updateTask?.cancel()
-        updateTask = nil
-        pendingState = nil
-        currentDriveID = nil
-        requestAttempted = false
-        isDismissedForCurrentDrive = false
+        let matchingActivity = activity.flatMap { $0.attributes.driveID == driveID ? $0 : nil }
+            ?? Activity<VeluraDriveActivityAttributes>.activities.first {
+                $0.attributes.driveID == driveID && ($0.activityState == .active || $0.activityState == .stale)
+            }
 
-        guard let activity, activity.attributes.driveID == driveID else {
-            if !requestInFlightDriveIDs.contains(driveID) {
+        guard let matchingActivity else {
+            if requestInFlightDriveIDs.contains(driveID) {
+                pendingEndingStates[driveID] = state
+            } else {
                 pendingEndingStates.removeValue(forKey: driveID)
+            }
+            if isCurrentDrive {
+                activity = nil
+                activityStateTask?.cancel()
+                activityStateTask = nil
             }
             return
         }
 
-        self.activity = nil
-        activityStateTask?.cancel()
-        activityStateTask = nil
+        if isCurrentDrive {
+            activity = nil
+            activityStateTask?.cancel()
+            activityStateTask = nil
+        }
+
+        if requestInFlightDriveIDs.contains(driveID) {
+            pendingEndingStates[driveID] = state
+        }
         let finalContent = ActivityContent(state: state, staleDate: nil)
-        Task {
-            await activity.end(
+        Task { [weak self] in
+            await matchingActivity.end(
                 finalContent,
                 dismissalPolicy: .after(Date().addingTimeInterval(30 * 60))
             )
+            self?.pendingEndingStates.removeValue(forKey: driveID)
         }
+    }
+
+    private func endImmediately(_ activity: Activity<VeluraDriveActivityAttributes>) {
+        Task {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+    }
+
+    private func end(
+        _ activity: Activity<VeluraDriveActivityAttributes>,
+        with state: VeluraDriveActivityAttributes.ContentState
+    ) {
+        Task {
+            await activity.end(
+                ActivityContent(state: state, staleDate: nil),
+                dismissalPolicy: .after(Date().addingTimeInterval(30 * 60))
+            )
+        }
+    }
+
+    private func completedState(
+        from currentState: VeluraDriveActivityAttributes.ContentState,
+        drive: DriveRecord
+    ) -> VeluraDriveActivityAttributes.ContentState {
+        var state = currentState
+        state.speedKmh = 0
+        state.elapsedSeconds = drive.duration
+        state.distanceKm = drive.distanceKm
+        state.topSpeedKmh = drive.topSpeedKmh
+        state.updatedAt = .now
+        state.isRunning = false
+        state.isEnded = true
+        return state
     }
 
     private func scheduleUpdate(_ state: VeluraDriveActivityAttributes.ContentState, immediately: Bool) {

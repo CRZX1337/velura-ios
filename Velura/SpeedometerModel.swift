@@ -203,10 +203,15 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         return Double(max(1, maximum))
     }
 
-    private func updateDriveLiveActivity(at date: Date = .now) {
+    private func updateDriveLiveActivity(at date: Date = .now, allowRequest: Bool = true) {
         guard hasUnfinishedSession, let driveID, let driveStartedAt else { return }
         let state = liveActivityState(at: date)
-        DriveLiveActivityController.shared.startOrUpdate(driveID: driveID, startedAt: driveStartedAt, state: state)
+        DriveLiveActivityController.shared.startOrUpdate(
+            driveID: driveID,
+            startedAt: driveStartedAt,
+            state: state,
+            allowRequest: allowRequest
+        )
     }
 
     private func endDriveLiveActivity(at date: Date) {
@@ -494,7 +499,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             interruptionGaps: interruptionGaps
         )
         isFinishingSession = true
-        updateDriveLiveActivity(at: finishedAt)
+        updateDriveLiveActivity(at: finishedAt, allowRequest: false)
         persistActiveDrive(force: true)
         DriveHistoryStore.shared.add(drive) { [weak self] errorMessage in
             guard let self, self.hasUnfinishedSession else { return }
@@ -882,20 +887,33 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             if let errorMessage = result.errorMessage {
                 self.drivePersistenceErrorMessage = "Saved drive data couldn't be restored. \(errorMessage)"
             }
+            let completedDrives = DriveHistoryStore.shared.drives
             guard let snapshot = result.snapshot else {
+                if result.errorMessage == nil {
+                    DriveLiveActivityController.shared.reconcile(
+                        activeDriveID: nil,
+                        state: nil,
+                        completedDrives: completedDrives
+                    )
+                }
                 self.isDriveStorageLoading = false
                 return
             }
 
             let alreadyCompleted: Bool
             if let sessionID = snapshot.sessionID {
-                alreadyCompleted = DriveHistoryStore.shared.drives.contains { $0.id == sessionID }
+                alreadyCompleted = completedDrives.contains { $0.id == sessionID }
             } else {
-                alreadyCompleted = DriveHistoryStore.shared.drives.contains {
+                alreadyCompleted = completedDrives.contains {
                     abs($0.date.timeIntervalSince(snapshot.startedAt)) < 1
                 }
             }
             guard !alreadyCompleted else {
+                DriveLiveActivityController.shared.reconcile(
+                    activeDriveID: nil,
+                    state: nil,
+                    completedDrives: completedDrives
+                )
                 ActiveDriveStore.shared.clear { [weak self] errorMessage in
                     guard let errorMessage else { return }
                     self?.drivePersistenceErrorMessage = "Completed drive data couldn't be cleared. \(errorMessage)"
@@ -923,6 +941,11 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             self.isAwaitingDriveRecoveryDecision = true
             self.showDriveRecoveryChoice = true
             self.isDriveStorageLoading = false
+            DriveLiveActivityController.shared.reconcile(
+                activeDriveID: self.driveID,
+                state: self.liveActivityState(),
+                completedDrives: completedDrives
+            )
         }
     }
 
