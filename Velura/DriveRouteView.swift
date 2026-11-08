@@ -7,6 +7,7 @@ struct DriveRouteView: View {
     let onDeleteRoute: () -> Void
     let onBack: () -> Void
 
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject private var appearance = AppAppearance.shared
@@ -133,6 +134,7 @@ struct DriveRouteView: View {
                 .padding(.bottom, 12)
                 .frame(maxWidth: 520)
                 .frame(maxWidth: .infinity)
+                .zIndex(1)
             }
         }
         .preferredColorScheme(appearance.preferredColorScheme)
@@ -249,7 +251,10 @@ struct DriveRouteView: View {
     }
 
     private var backButton: some View {
-        Button(action: onBack) {
+        Button {
+            dismiss()
+            onBack()
+        } label: {
             Image(systemName: "chevron.left")
                 .modifier(AdaptiveFont(size: 16, weight: .semibold))
                 .foregroundStyle(SpeedometerStyle.foreground)
@@ -438,29 +443,18 @@ struct DriveRouteView: View {
 
     private var interruptionGapNotice: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Button {
-                withAnimation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion)) {
-                    showsRecordingGaps.toggle()
-                }
-            } label: {
+            Toggle(isOn: $showsRecordingGaps) {
                 HStack(spacing: 8) {
                     Label("Recording gaps", systemImage: "location.slash")
                         .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
                     Text("\(drive.interruptionGaps.count)")
                         .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
-                    Spacer(minLength: 4)
-                    Text(showsRecordingGaps ? "Hide details" : "Show details")
-                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
-                    Image(systemName: showsRecordingGaps ? "chevron.up" : "chevron.down")
-                        .modifier(AdaptiveFont(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(SpeedometerStyle.warning)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(showsRecordingGaps ? "Hide recording gap details" : "Show recording gap details")
-            .accessibilityValue("\(drive.interruptionGaps.count) recording gaps")
+            .tint(SpeedometerStyle.warning)
+            .accessibilityHint("Shows or hides the gap details without changing saved route data")
 
             if showsRecordingGaps {
                 VStack(alignment: .leading, spacing: 7) {
@@ -482,6 +476,7 @@ struct DriveRouteView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SpeedometerStyle.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: showsRecordingGaps)
     }
 
     private func summaryMetric(title: String, value: String) -> some View {
