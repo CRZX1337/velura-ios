@@ -38,6 +38,45 @@ jobs:
 
           APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/Velura.app"
           test -d "$APP_PATH"
+          python3 - "$APP_PATH" <<'PY'
+          from pathlib import Path
+          import plistlib
+          import sys
+
+          app_path = Path(sys.argv[1])
+          extension_path = app_path / "PlugIns" / "VeluraLiveActivity.appex"
+          with (app_path / "Info.plist").open("rb") as plist_file:
+              app_info = plistlib.load(plist_file)
+          with (extension_path / "Info.plist").open("rb") as plist_file:
+              extension_info = plistlib.load(plist_file)
+
+          for key in ("CFBundleShortVersionString", "CFBundleVersion"):
+              if not app_info.get(key) or app_info[key] != extension_info.get(key):
+                  raise SystemExit(f"App and Live Activity metadata differ for {key}")
+
+          expected_orientations = {
+              "UIInterfaceOrientationPortrait",
+              "UIInterfaceOrientationLandscapeLeft",
+              "UIInterfaceOrientationLandscapeRight",
+          }
+          if set(app_info.get("UISupportedInterfaceOrientations", [])) != expected_orientations:
+              raise SystemExit("Built app has unexpected iPhone orientations")
+
+          manifest_path = app_path / "PrivacyInfo.xcprivacy"
+          with manifest_path.open("rb") as plist_file:
+              privacy_manifest = plistlib.load(plist_file)
+          expected_api = {
+              "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+              "NSPrivacyAccessedAPITypeReasons": ["CA92.1"],
+          }
+          if privacy_manifest.get("NSPrivacyAccessedAPITypes") != [expected_api]:
+              raise SystemExit("Built app privacy manifest is missing the audited UserDefaults reason")
+
+          print(
+              "Verified app and Live Activity metadata: "
+              f"{app_info['CFBundleShortVersionString']} ({app_info['CFBundleVersion']})"
+          )
+          PY
           mkdir -p "$IPA_ROOT/Payload" "$IPA_EXPORT"
           cp -R "$APP_PATH" "$IPA_ROOT/Payload/Velura.app"
           ditto -c -k --sequesterRsrc --keepParent "$IPA_ROOT/Payload" "$IPA_EXPORT/Velura-unsigned.ipa"

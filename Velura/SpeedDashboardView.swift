@@ -45,6 +45,7 @@ struct SpeedDashboardView: View {
     let rangeMaximum: Double
     let showsGPSStatus: Bool
     let onResetRequested: () -> Void
+    let onOpenActiveRoute: () -> Void
 
     private var unit: String { usesMiles ? "mph" : "km/h" }
     private var distanceUnit: String { usesMiles ? "mi" : "km" }
@@ -323,6 +324,21 @@ struct SpeedDashboardView: View {
             .buttonStyle(.plain)
             .disabled(model.isDriveStorageLoading || model.isFinishingSession)
             .accessibilityHint(model.isSessionActive ? "Pauses GPS tracking and drive statistics" : "Starts or resumes GPS speed and trip tracking")
+
+            if model.hasUnfinishedSession && !model.isDriveStorageLoading {
+                Button(action: onOpenActiveRoute) {
+                    Label("View live route", systemImage: "map")
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.accent)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 49)
+                        .contentShape(Rectangle())
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isFinishingSession)
+                .accessibilityHint("Opens the live route for this unfinished drive")
+            }
 
             if model.hasUnfinishedSession {
                 Button {

@@ -33,6 +33,7 @@ struct ContentView: View {
     @AppStorage("speedometer.firstLaunchSetup.completed") private var hasCompletedFirstLaunchSetup = false
     @State private var showingResetConfirmation = false
     @State private var showsActiveDriveMap = false
+    @State private var pendingActiveDriveMapRequest = false
     @State private var selectedTab: MainTab = .speedometer
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -67,6 +68,15 @@ struct ContentView: View {
         .onOpenURL { url in
             guard url.scheme == "velura", url.host == "drive", url.path == "/active" else { return }
             selectedTab = .speedometer
+            if model.isDriveStorageLoading {
+                pendingActiveDriveMapRequest = true
+            } else {
+                showsActiveDriveMap = model.hasUnfinishedSession
+            }
+        }
+        .onChange(of: model.isDriveStorageLoading) { _, isLoading in
+            guard !isLoading, pendingActiveDriveMapRequest else { return }
+            pendingActiveDriveMapRequest = false
             showsActiveDriveMap = model.hasUnfinishedSession
         }
         .fullScreenCover(isPresented: $showsActiveDriveMap) {
@@ -238,7 +248,8 @@ struct ContentView: View {
             usesMiles: usesMiles,
             rangeMaximum: rangeMaximum,
             showsGPSStatus: showsGPSStatus,
-            onResetRequested: { showingResetConfirmation = true }
+            onResetRequested: { showingResetConfirmation = true },
+            onOpenActiveRoute: { showsActiveDriveMap = true }
         )
         .confirmationDialog("Reset this drive?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
             Button("Reset drive", role: .destructive) {
