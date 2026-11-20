@@ -31,6 +31,22 @@ struct AccelerationAttemptGroup: Identifiable {
     var bestTime: TimeInterval? { attempts.map(\.duration).min() }
 }
 
+enum DriveSessionState: String, Equatable {
+    case idle
+    case active
+    case paused
+    case finishing
+
+    var badgeTitle: String {
+        switch self {
+        case .idle: "READY"
+        case .active: "DRIVING"
+        case .paused: "PAUSED"
+        case .finishing: "SAVING"
+        }
+    }
+}
+
 struct SpeedDisplaySmoother {
     private(set) var smoothedValue: Double = 0
     private var hasSample = false
@@ -66,6 +82,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     @Published private(set) var topSpeedKmh = 0.0
     @Published private(set) var distanceKm = 0.0
     @Published private(set) var elapsedSeconds = 0.0
+    @Published private(set) var movingSeconds = 0.0
+    @Published private(set) var pausedSeconds = 0.0
     @Published private(set) var authorizationStatus: CLAuthorizationStatus
     @Published private(set) var horizontalAccuracy: CLLocationAccuracy = -1
     @Published private(set) var hasGPSFix = false
@@ -99,6 +117,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private var lastValidLocation: CLLocation?
     @Published private(set) var routeCoordinates: [DriveRoutePoint] = []
     private var sessionStartedAt: Date?
+    private var pausedStartedAt: Date?
     private var driveStartedAt: Date?
     private var driveID: UUID?
     private var lastProcessedLocationTimestamp: Date?
@@ -111,6 +130,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private var pendingAccelerationArm = false
     private var pendingSessionStart = false
     private let accelerationStartThresholdKmh = 2.0
+    private let movingSpeedThresholdKmh = 3.0
     private var overspeedWarningEnabled = false
     private var overspeedThresholdKmh = 100.0
     private var keepScreenAwakeEnabled = true
@@ -121,6 +141,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private var rawSpeedKmh = 0.0
     private var rawTopSpeedKmh = 0.0
     private var rawDistanceKm = 0.0
+    private var rawMovingSeconds = 0.0
+    private var rawPausedSeconds = 0.0
     private var rawHorizontalAccuracy: CLLocationAccuracy = -1
     private var speedSmoother = SpeedDisplaySmoother()
     private let uiPublishInterval: TimeInterval = 0.25
@@ -204,8 +226,45 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
     }
 
+    var driveState: DriveSessionState {
+        if isFinishingSession { return .finishing }
+        if isSessionActive { return .active }
+        if hasUnfinishedSession { return .paused }
+        return .idle
+    }
+
     func elapsedTime(at date: Date = .now) -> TimeInterval {
         elapsedSeconds + (sessionStartedAt.map { max(0, date.timeIntervalSince($0)) } ?? 0)
+    }
+
+    func pausedTime(at date: Date = .now) -> TimeInterval {
+        rawPausedSeconds + (pausedStartedAt.map { max(0, date.timeIntervalSince($0)) } ?? 0)
+    }
+
+    func movingTime(at date: Date = .now) -> TimeInterval {
+        min(rawMovingSeconds, elapsedTime(at: date))
+    }
+
+    func averageSpeedKmh(at date: Date = .now) -> Double {
+        let elapsed = elapsedTime(at: date)
+        guard elapsed > 0, rawDistanceKm > 0 else { return 0 }
+        return rawDistanceKm / (elapsed / 3_600)
+    }
+
+    func averageMovingSpeedKmh(at date: Date = .now) -> Double {
+        let moving = movingTime(at: date)
+        guard moving > 0, rawDistanceKm > 0 else { return 0 }
+        return rawDistanceKm / (moving / 3_600)
+    }
+
+    func currentCoordinate() -> CLLocationCoordinate2D? {
+        if let loc = lastValidLocation, CLLocationCoordinate2DIsValid(loc.coordinate) {
+            return loc.coordinate
+        }
+        if let last = routeCoordinates.last {
+            return CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude)
+        }
+        return nil
     }
 
     func refreshLiveActivity() {
@@ -402,6 +461,12 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         if distanceKm != rawDistanceKm {
             distanceKm = rawDistanceKm
         }
+        if movingSeconds != rawMovingSeconds {
+            movingSeconds = rawMovingSeconds
+        }
+        if pausedSeconds != rawPausedSeconds {
+            pausedSeconds = rawPausedSeconds
+        }
         if horizontalAccuracy != rawHorizontalAccuracy {
             horizontalAccuracy = rawHorizontalAccuracy
         }
@@ -555,11 +620,13 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     func pauseSession() {
         guard isSessionActive else { return }
+        let pausedAt = Date()
         if let sessionStartedAt {
-            elapsedSeconds += max(0, Date().timeIntervalSince(sessionStartedAt))
+            elapsedSeconds += max(0, pausedAt.timeIntervalSince(sessionStartedAt))
         }
         sessionStartedAt = nil
-        pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? Date()
+        pausedStartedAt = pausedAt
+        pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? pausedAt
         isSessionActive = false
         updateIdleTimerState()
         stopGPSFreshnessMonitoring()
@@ -583,10 +650,14 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
 
     func finishSession() {
         guard hasUnfinishedSession, !isFinishingSession else { return }
+        let finishedAt = Date()
+        if let pausedStartedAt {
+            rawPausedSeconds += max(0, finishedAt.timeIntervalSince(pausedStartedAt))
+            self.pausedStartedAt = nil
+        }
         if isSessionActive {
-            let pausedAt = Date()
             if let sessionStartedAt {
-                elapsedSeconds += max(0, pausedAt.timeIntervalSince(sessionStartedAt))
+                elapsedSeconds += max(0, finishedAt.timeIntervalSince(sessionStartedAt))
             }
             sessionStartedAt = nil
             isSessionActive = false
@@ -602,7 +673,6 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             updateOverspeedWarning(triggerHaptic: false)
         }
 
-        let finishedAt = Date()
         if let lastValidLocation {
             recordRoutePoint(lastValidLocation, force: true)
         }
@@ -614,10 +684,14 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             return
         }
 
+        let recordedMoving = min(rawMovingSeconds, duration)
+        let recordedPaused = rawPausedSeconds > 0 ? rawPausedSeconds : nil
         let drive = DriveRecord(
             id: driveID ?? UUID(),
             date: driveStartedAt ?? finishedAt,
             duration: duration,
+            movingDuration: recordedMoving > 0 ? recordedMoving : nil,
+            pausedDuration: recordedPaused,
             distanceKm: rawDistanceKm,
             topSpeedKmh: rawTopSpeedKmh,
             routeCoordinates: routeCoordinates.count >= 2 ? routeCoordinates : [],
@@ -670,6 +744,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         accelerationInterruptedForGPS = false
         sessionStartedAt = nil
+        pausedStartedAt = nil
         driveStartedAt = nil
         previousLocation = nil
         lastValidLocation = nil
@@ -677,6 +752,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         rawSpeedKmh = 0
         rawTopSpeedKmh = 0
         rawDistanceKm = 0
+        rawMovingSeconds = 0
+        rawPausedSeconds = 0
         rawHorizontalAccuracy = -1
         speedSmoother.reset()
         pendingUIPublishTask?.cancel()
@@ -686,6 +763,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         topSpeedKmh = 0
         distanceKm = 0
         elapsedSeconds = 0
+        movingSeconds = 0
+        pausedSeconds = 0
         horizontalAccuracy = -1
         hasGPSFix = false
         lastValidGPSFixAt = nil
@@ -794,6 +873,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
                 let timeDelta = location.timestamp.timeIntervalSince(previousLocation.timestamp)
                 if timeDelta > 0 && timeDelta <= gpsFixStaleAfter {
                     rawDistanceKm += distance / 1_000
+                    let segmentImpliedSpeedKmh = (distance / timeDelta) * 3.6
+                    if measuredSpeed >= movingSpeedThresholdKmh || segmentImpliedSpeedKmh >= movingSpeedThresholdKmh {
+                        rawMovingSeconds += timeDelta
+                    }
                 }
             }
             previousLocation = location
@@ -924,6 +1007,11 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             accelerationState = .waitingForMovement
             canBeginAccelerationRun = false
         }
+        if let pausedStartedAt {
+            rawPausedSeconds += max(0, sessionResumedAt.timeIntervalSince(pausedStartedAt))
+            self.pausedStartedAt = nil
+            pausedSeconds = rawPausedSeconds
+        }
         if !hasUnfinishedSession {
             hasUnfinishedSession = true
             driveStartedAt = sessionResumedAt
@@ -933,6 +1021,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             interruptionGaps.removeAll()
             pendingGapStartAt = nil
             lastValidLocation = nil
+            rawMovingSeconds = 0
+            rawPausedSeconds = 0
+            movingSeconds = 0
+            pausedSeconds = 0
             routeCoordinates.removeAll(keepingCapacity: true)
         }
         isAwaitingDriveRecoveryDecision = false
@@ -969,11 +1061,30 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             if distance < 2 || (!force && distance < 8 && timeSinceLastPoint < 8) { return }
         }
 
+        let recordedSpeedKmh: Double? = (location.speed.isFinite && location.speed >= 0)
+            ? max(0, location.speed * 3.6)
+            : nil
+        let validAltitude: Double?
+        let validVerticalAccuracy: Double?
+        if location.verticalAccuracy.isFinite,
+           location.verticalAccuracy >= 0,
+           location.verticalAccuracy <= 25,
+           location.altitude.isFinite {
+            validAltitude = location.altitude
+            validVerticalAccuracy = location.verticalAccuracy
+        } else {
+            validAltitude = nil
+            validVerticalAccuracy = nil
+        }
+
         let point = DriveRoutePoint(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
             timestamp: location.timestamp,
-            segmentIndex: routeSegmentIndex
+            segmentIndex: routeSegmentIndex,
+            speedKmh: recordedSpeedKmh,
+            altitudeMeters: validAltitude,
+            verticalAccuracy: validVerticalAccuracy
         )
         routeCoordinates.append(point)
         if hasUnfinishedSession, let driveID {
@@ -1044,6 +1155,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             sessionID: driveID,
             startedAt: driveStartedAt,
             elapsedSeconds: elapsedTime(at: now),
+            movingSeconds: rawMovingSeconds,
+            pausedSeconds: pausedTime(at: now),
             distanceKm: rawDistanceKm,
             topSpeedKmh: rawTopSpeedKmh,
             routePointCount: routeCoordinates.count,
@@ -1104,6 +1217,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             self.driveID = snapshot.sessionID ?? UUID()
             self.driveStartedAt = snapshot.startedAt
             self.elapsedSeconds = snapshot.elapsedSeconds
+            self.rawMovingSeconds = snapshot.movingSeconds
+            self.rawPausedSeconds = snapshot.pausedSeconds
+            self.movingSeconds = snapshot.movingSeconds
+            self.pausedSeconds = snapshot.pausedSeconds
             self.rawDistanceKm = snapshot.distanceKm
             self.rawTopSpeedKmh = snapshot.topSpeedKmh
             self.distanceKm = snapshot.distanceKm
@@ -1163,6 +1280,52 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private func persistAccelerationAttempts() {
         guard let data = try? JSONEncoder().encode(accelerationAttempts) else { return }
         defaults.set(data, forKey: accelerationAttemptsStorageKey)
+    }
+
+    func simulateSessionStartForTesting(at date: Date = .now) {
+        driveID = UUID()
+        driveStartedAt = date
+        hasUnfinishedSession = true
+        isSessionActive = true
+        sessionStartedAt = date
+        pausedStartedAt = nil
+        rawMovingSeconds = 0
+        rawPausedSeconds = 0
+        rawDistanceKm = 0
+        rawTopSpeedKmh = 0
+    }
+
+    func simulateLocationSampleForTesting(_ location: CLLocation, receivedAt: Date) {
+        locationManager(locationManager, didUpdateLocations: [location])
+        flushUIMetricsToPublishedState()
+        _ = receivedAt
+    }
+
+    func simulatePauseForTesting(at date: Date) {
+        guard isSessionActive else { return }
+        if let sessionStartedAt {
+            elapsedSeconds += max(0, date.timeIntervalSince(sessionStartedAt))
+        }
+        sessionStartedAt = nil
+        pausedStartedAt = date
+        pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? date
+        isSessionActive = false
+        hasGPSFix = false
+        lastValidGPSFixAt = nil
+        previousLocation = nil
+        resetDisplayedSpeedImmediate()
+    }
+
+    func simulateResumeForTesting(at date: Date) {
+        guard !isSessionActive, hasUnfinishedSession else { return }
+        if let pausedStartedAt {
+            rawPausedSeconds += max(0, date.timeIntervalSince(pausedStartedAt))
+            self.pausedStartedAt = nil
+            pausedSeconds = rawPausedSeconds
+        }
+        isSessionActive = true
+        sessionStartedAt = date
+        previousLocation = nil
     }
 
     private func updateAccelerationTest(speedKmh: Double, at timestamp: Date) {

@@ -6,12 +6,26 @@ struct DriveRoutePoint: Codable, Equatable {
     let longitude: Double
     let timestamp: Date
     let segmentIndex: Int
+    let speedKmh: Double?
+    let altitudeMeters: Double?
+    let verticalAccuracy: Double?
 
-    init(latitude: Double, longitude: Double, timestamp: Date, segmentIndex: Int = 0) {
+    init(
+        latitude: Double,
+        longitude: Double,
+        timestamp: Date,
+        segmentIndex: Int = 0,
+        speedKmh: Double? = nil,
+        altitudeMeters: Double? = nil,
+        verticalAccuracy: Double? = nil
+    ) {
         self.latitude = latitude
         self.longitude = longitude
         self.timestamp = timestamp
         self.segmentIndex = segmentIndex
+        self.speedKmh = speedKmh
+        self.altitudeMeters = altitudeMeters
+        self.verticalAccuracy = verticalAccuracy
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -19,6 +33,9 @@ struct DriveRoutePoint: Codable, Equatable {
         case longitude
         case timestamp
         case segmentIndex
+        case speedKmh
+        case altitudeMeters
+        case verticalAccuracy
     }
 
     init(from decoder: Decoder) throws {
@@ -27,6 +44,9 @@ struct DriveRoutePoint: Codable, Equatable {
         longitude = try container.decode(Double.self, forKey: .longitude)
         timestamp = try container.decode(Date.self, forKey: .timestamp)
         segmentIndex = try container.decodeIfPresent(Int.self, forKey: .segmentIndex) ?? 0
+        speedKmh = try container.decodeIfPresent(Double.self, forKey: .speedKmh)
+        altitudeMeters = try container.decodeIfPresent(Double.self, forKey: .altitudeMeters)
+        verticalAccuracy = try container.decodeIfPresent(Double.self, forKey: .verticalAccuracy)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -35,6 +55,9 @@ struct DriveRoutePoint: Codable, Equatable {
         try container.encode(longitude, forKey: .longitude)
         try container.encode(timestamp, forKey: .timestamp)
         try container.encode(segmentIndex, forKey: .segmentIndex)
+        try container.encodeIfPresent(speedKmh, forKey: .speedKmh)
+        try container.encodeIfPresent(altitudeMeters, forKey: .altitudeMeters)
+        try container.encodeIfPresent(verticalAccuracy, forKey: .verticalAccuracy)
     }
 }
 
@@ -55,6 +78,8 @@ struct ActiveDriveSnapshot: Codable, Equatable {
     let sessionID: UUID?
     let startedAt: Date
     var elapsedSeconds: TimeInterval
+    var movingSeconds: TimeInterval
+    var pausedSeconds: TimeInterval
     var distanceKm: Double
     var topSpeedKmh: Double
     var routeCoordinates: [DriveRoutePoint]
@@ -68,6 +93,8 @@ struct ActiveDriveSnapshot: Codable, Equatable {
         sessionID: UUID?,
         startedAt: Date,
         elapsedSeconds: TimeInterval,
+        movingSeconds: TimeInterval = 0,
+        pausedSeconds: TimeInterval = 0,
         distanceKm: Double,
         topSpeedKmh: Double,
         routeCoordinates: [DriveRoutePoint],
@@ -80,6 +107,8 @@ struct ActiveDriveSnapshot: Codable, Equatable {
         self.sessionID = sessionID
         self.startedAt = startedAt
         self.elapsedSeconds = elapsedSeconds
+        self.movingSeconds = movingSeconds
+        self.pausedSeconds = pausedSeconds
         self.distanceKm = distanceKm
         self.topSpeedKmh = topSpeedKmh
         self.routeCoordinates = routeCoordinates
@@ -94,6 +123,8 @@ struct ActiveDriveSnapshot: Codable, Equatable {
         case sessionID
         case startedAt
         case elapsedSeconds
+        case movingSeconds
+        case pausedSeconds
         case distanceKm
         case topSpeedKmh
         case routeCoordinates
@@ -109,6 +140,8 @@ struct ActiveDriveSnapshot: Codable, Equatable {
         sessionID = try container.decodeIfPresent(UUID.self, forKey: .sessionID)
         startedAt = try container.decode(Date.self, forKey: .startedAt)
         elapsedSeconds = try container.decode(TimeInterval.self, forKey: .elapsedSeconds)
+        movingSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .movingSeconds) ?? 0
+        pausedSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedSeconds) ?? 0
         distanceKm = try container.decode(Double.self, forKey: .distanceKm)
         topSpeedKmh = try container.decode(Double.self, forKey: .topSpeedKmh)
         routeCoordinates = try container.decode([DriveRoutePoint].self, forKey: .routeCoordinates)
@@ -127,6 +160,8 @@ struct ActiveDriveMetadata: Codable, Equatable {
     let sessionID: UUID?
     let startedAt: Date
     let elapsedSeconds: TimeInterval
+    let movingSeconds: TimeInterval
+    let pausedSeconds: TimeInterval
     let distanceKm: Double
     let topSpeedKmh: Double
     let routePointCount: Int
@@ -140,6 +175,8 @@ struct ActiveDriveMetadata: Codable, Equatable {
         sessionID: UUID?,
         startedAt: Date,
         elapsedSeconds: TimeInterval,
+        movingSeconds: TimeInterval = 0,
+        pausedSeconds: TimeInterval = 0,
         distanceKm: Double,
         topSpeedKmh: Double,
         routePointCount: Int,
@@ -152,6 +189,8 @@ struct ActiveDriveMetadata: Codable, Equatable {
         self.sessionID = sessionID
         self.startedAt = startedAt
         self.elapsedSeconds = elapsedSeconds
+        self.movingSeconds = movingSeconds
+        self.pausedSeconds = pausedSeconds
         self.distanceKm = distanceKm
         self.topSpeedKmh = topSpeedKmh
         self.routePointCount = routePointCount
@@ -162,11 +201,46 @@ struct ActiveDriveMetadata: Codable, Equatable {
         self.pendingGapStartAt = pendingGapStartAt
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case sessionID
+        case startedAt
+        case elapsedSeconds
+        case movingSeconds
+        case pausedSeconds
+        case distanceKm
+        case topSpeedKmh
+        case routePointCount
+        case updatedAt
+        case lastLocationAt
+        case routeSegmentIndex
+        case interruptionGaps
+        case pendingGapStartAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID = try container.decodeIfPresent(UUID.self, forKey: .sessionID)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        elapsedSeconds = try container.decode(TimeInterval.self, forKey: .elapsedSeconds)
+        movingSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .movingSeconds) ?? 0
+        pausedSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedSeconds) ?? 0
+        distanceKm = try container.decode(Double.self, forKey: .distanceKm)
+        topSpeedKmh = try container.decode(Double.self, forKey: .topSpeedKmh)
+        routePointCount = try container.decode(Int.self, forKey: .routePointCount)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        lastLocationAt = try container.decodeIfPresent(Date.self, forKey: .lastLocationAt)
+        routeSegmentIndex = try container.decodeIfPresent(Int.self, forKey: .routeSegmentIndex) ?? 0
+        interruptionGaps = try container.decodeIfPresent([DriveInterruptionGap].self, forKey: .interruptionGaps) ?? []
+        pendingGapStartAt = try container.decodeIfPresent(Date.self, forKey: .pendingGapStartAt)
+    }
+
     init(snapshot: ActiveDriveSnapshot, routePointCount: Int) {
         self.init(
             sessionID: snapshot.sessionID,
             startedAt: snapshot.startedAt,
             elapsedSeconds: snapshot.elapsedSeconds,
+            movingSeconds: snapshot.movingSeconds,
+            pausedSeconds: snapshot.pausedSeconds,
             distanceKm: snapshot.distanceKm,
             topSpeedKmh: snapshot.topSpeedKmh,
             routePointCount: routePointCount,
@@ -183,6 +257,8 @@ struct ActiveDriveMetadata: Codable, Equatable {
             sessionID: sessionID,
             startedAt: startedAt,
             elapsedSeconds: elapsedSeconds,
+            movingSeconds: movingSeconds,
+            pausedSeconds: pausedSeconds,
             distanceKm: distanceKm,
             topSpeedKmh: topSpeedKmh,
             routePointCount: count,
@@ -199,6 +275,8 @@ struct ActiveDriveMetadata: Codable, Equatable {
             sessionID: sessionID,
             startedAt: startedAt,
             elapsedSeconds: elapsedSeconds,
+            movingSeconds: movingSeconds,
+            pausedSeconds: pausedSeconds,
             distanceKm: distanceKm,
             topSpeedKmh: topSpeedKmh,
             routeCoordinates: routeCoordinates,
@@ -296,15 +374,24 @@ struct DriveRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let date: Date
     let duration: TimeInterval
+    let movingDuration: TimeInterval?
+    let pausedDuration: TimeInterval?
     let distanceKm: Double
     let topSpeedKmh: Double
     var routeCoordinates: [DriveRoutePoint]
     var interruptionGaps: [DriveInterruptionGap]
 
+    var averageSpeedKmh: Double {
+        guard duration > 0, distanceKm > 0 else { return 0 }
+        return distanceKm / (duration / 3_600)
+    }
+
     init(
         id: UUID = UUID(),
         date: Date,
         duration: TimeInterval,
+        movingDuration: TimeInterval? = nil,
+        pausedDuration: TimeInterval? = nil,
         distanceKm: Double,
         topSpeedKmh: Double,
         routeCoordinates: [DriveRoutePoint] = [],
@@ -313,6 +400,8 @@ struct DriveRecord: Codable, Identifiable, Equatable {
         self.id = id
         self.date = date
         self.duration = duration
+        self.movingDuration = movingDuration
+        self.pausedDuration = pausedDuration
         self.distanceKm = distanceKm
         self.topSpeedKmh = topSpeedKmh
         self.routeCoordinates = routeCoordinates
@@ -323,6 +412,8 @@ struct DriveRecord: Codable, Identifiable, Equatable {
         case id
         case date
         case duration
+        case movingDuration
+        case pausedDuration
         case distanceKm
         case topSpeedKmh
         case routeCoordinates
@@ -334,6 +425,8 @@ struct DriveRecord: Codable, Identifiable, Equatable {
         id = try container.decode(UUID.self, forKey: .id)
         date = try container.decode(Date.self, forKey: .date)
         duration = try container.decode(TimeInterval.self, forKey: .duration)
+        movingDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .movingDuration)
+        pausedDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedDuration)
         distanceKm = try container.decode(Double.self, forKey: .distanceKm)
         topSpeedKmh = try container.decode(Double.self, forKey: .topSpeedKmh)
         routeCoordinates = try container.decodeIfPresent([DriveRoutePoint].self, forKey: .routeCoordinates) ?? []
@@ -345,6 +438,8 @@ struct DriveRecord: Codable, Identifiable, Equatable {
         try container.encode(id, forKey: .id)
         try container.encode(date, forKey: .date)
         try container.encode(duration, forKey: .duration)
+        try container.encodeIfPresent(movingDuration, forKey: .movingDuration)
+        try container.encodeIfPresent(pausedDuration, forKey: .pausedDuration)
         try container.encode(distanceKm, forKey: .distanceKm)
         try container.encode(topSpeedKmh, forKey: .topSpeedKmh)
         try container.encode(routeCoordinates, forKey: .routeCoordinates)
