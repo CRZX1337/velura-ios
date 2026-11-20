@@ -78,13 +78,15 @@ enum NavigationManeuverHelper {
         if usesMiles {
             let miles = clamped / 1_609.344
             if miles >= 0.2 {
-                return String(format: "%.1f mi", miles)
+                let roundedMiles = (miles * 10).rounded() / 10
+                return String(format: "%.1f mi", locale: Locale(identifier: "en_US_POSIX"), roundedMiles)
             }
             let feet = Int((clamped * 3.28084 / 50).rounded()) * 50
             return "\(max(50, feet)) ft"
         } else {
             if clamped >= 1_000 {
-                return String(format: "%.1f km", clamped / 1_000)
+                let roundedKm = (clamped / 100).rounded() / 10
+                return String(format: "%.1f km", locale: Locale(identifier: "en_US_POSIX"), roundedKm)
             }
             let rounded = Int((clamped / 10).rounded()) * 10
             return "\(max(10, rounded)) m"
