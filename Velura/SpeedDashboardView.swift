@@ -138,7 +138,6 @@ struct SpeedDashboardView: View {
     private var brandHeader: some View {
         if dynamicTypeSize.isAccessibilitySize {
             HStack {
-                driveModeButton
                 brandTitle
                 Spacer(minLength: 8)
                 if model.hasUnfinishedSession { resetDriveButton }
@@ -147,34 +146,15 @@ struct SpeedDashboardView: View {
         } else {
             ZStack {
                 brandTitle
-                HStack {
-                    driveModeButton
-                    Spacer()
-                    if model.hasUnfinishedSession {
+                if model.hasUnfinishedSession {
+                    HStack {
+                        Spacer()
                         resetDriveButton
                     }
                 }
             }
             .frame(minHeight: 44)
         }
-    }
-
-    private var driveModeButton: some View {
-        Button(action: onOpenDriveMode) {
-            HStack(spacing: 6) {
-                Image(systemName: "car.fill")
-                    .modifier(AdaptiveFont(size: 12, weight: .semibold))
-                Text("Drive")
-                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
-            }
-            .foregroundStyle(SpeedometerStyle.accent)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 40)
-            .contentShape(Capsule())
-            .veluraGlassCapsule(tint: SpeedometerStyle.accent.opacity(0.14), interactive: true)
-        }
-        .buttonStyle(VeluraGlassPressButtonStyle())
-        .accessibilityLabel("Open Drive Mode cockpit")
     }
 
     private var brandTitle: some View {
@@ -401,6 +381,32 @@ struct SpeedDashboardView: View {
                     .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.96)), reduceMotion: reduceMotion))
                     .accessibilityLabel("Finish and save this drive")
                 }
+
+                Button(action: onOpenDriveMode) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "steeringwheel")
+                            .modifier(AdaptiveFont(size: 15, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.accent)
+                        Text("Drive Mode")
+                            .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                        Spacer()
+                        Text("Cockpit & Nav")
+                            .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                        Image(systemName: "chevron.right")
+                            .modifier(AdaptiveFont(size: 11, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.secondary)
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 49)
+                    .contentShape(Capsule())
+                    .veluraGlassCapsule(interactive: true)
+                    .glassEffectID("drive-mode-entry", in: controlsGlassNamespace)
+                }
+                .buttonStyle(VeluraGlassPressButtonStyle())
+                .accessibilityLabel("Open Drive Mode cockpit and in-app navigation")
             }
         }
         .animation(VeluraMotion.animation(VeluraMotion.morph, reduceMotion: reduceMotion), value: model.hasUnfinishedSession)

@@ -705,6 +705,26 @@ struct VeluraTests {
         #expect(model.driveState == .idle)
     }
 
+    @Test func mapsNavigationManeuverInstructionsAndFormatsDistances() {
+        #expect(NavigationManeuverHelper.symbol(for: "Turn left onto Main St") == "arrow.turn.up.left")
+        #expect(NavigationManeuverHelper.symbol(for: "Turn right onto Oak Ave") == "arrow.turn.up.right")
+        #expect(NavigationManeuverHelper.symbol(for: "Take the roundabout") == "arrow.triangle.2.circlepath")
+        #expect(NavigationManeuverHelper.symbol(for: "Arrive at destination") == "flag.checkered")
+        #expect(NavigationManeuverHelper.formattedDistance(1_450, usesMiles: false) == "1.5 km")
+        #expect(NavigationManeuverHelper.formattedDistance(240, usesMiles: false) == "240 m")
+        #expect(NavigationManeuverHelper.formattedETA(5_400) == "1h 30m")
+        #expect(NavigationManeuverHelper.formattedETA(420) == "7 min")
+    }
+
+    @Test func generatesValidURLSafeSpotifyPKCEVerifierAndChallenge() {
+        let verifier = SpotifyPKCE.makeCodeVerifier()
+        let challenge = SpotifyPKCE.makeCodeChallenge(for: verifier)
+        #expect(verifier.count >= 43)
+        #expect(challenge.count == 43)
+        #expect(!verifier.contains("+") && !verifier.contains("/") && !verifier.contains("="))
+        #expect(!challenge.contains("+") && !challenge.contains("/") && !challenge.contains("="))
+    }
+
     private func temporaryHistoryStorage() -> (URL, UserDefaults, String) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("VeluraHistory-\(UUID().uuidString)", isDirectory: true)
         let suiteName = "VeluraTests.\(UUID().uuidString)"

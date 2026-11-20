@@ -45,6 +45,7 @@ struct DriveModeView: View {
     @ObservedObject var model: SpeedometerModel
     @ObservedObject private var appearance = AppAppearance.shared
     @StateObject private var media = DriveMediaController()
+    @StateObject private var navigation = InAppNavigationController()
 
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @AppStorage("speedometer.selectedRange") private var selectedRange = 50
@@ -65,8 +66,9 @@ struct DriveModeView: View {
     @State private var cameraMode: DriveModeMapCameraMode = .followHeading
     @State private var isProgrammaticCameraUpdate = false
     @State private var showingEndConfirmation = false
-    @State private var showingDestinationSheet = false
-    @State private var destinationDraft = ""
+    @State private var showingNavigationSheet = false
+    @State private var showingSpotifySetupSheet = false
+    @State private var spotifyClientIDDraft = ""
 
     let onClose: () -> Void
 
@@ -186,6 +188,9 @@ struct DriveModeView: View {
                 media.stopMonitoring()
             }
         }
+        .onChange(of: model.routeCoordinates.count) { _, _ in
+            navigation.updateGuidance(userCoordinate: model.currentCoordinate())
+        }
         .onDisappear {
             media.stopMonitoring()
         }
@@ -197,8 +202,13 @@ struct DriveModeView: View {
         } message: {
             Text("The recorded drive summary and route will be saved to your history.")
         }
-        .sheet(isPresented: $showingDestinationSheet) {
-            externalNavigationSheet
+        .sheet(isPresented: $showingNavigationSheet) {
+            inAppNavigationSheet
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingSpotifySetupSheet) {
+            spotifySetupSheet
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
@@ -236,17 +246,52 @@ struct DriveModeView: View {
                     Toggle(isOn: $showsMediaWidget) {
                         Label("Music widget", systemImage: "music.note")
                     }
-                    Button {
-                        destinationDraft = savedDestination
-                        showingDestinationSheet = true
-                    } label: {
-                        Label("Navigate in Apple Maps", systemImage: "map.fill")
+
+                    Menu("Music source") {
+                        ForEach(DriveMediaSource.allCases) { source in
+                            Button {
+                                media.source = source
+                                if !showsMediaWidget { showsMediaWidget = true }
+                            } label: {
+                                Label(
+                                    media.source == source ? "\(source.title) (Active)" : source.title,
+                                    systemImage: source.symbol
+                                )
+                            }
+                        }
+                        if media.source == .spotify {
+                            Divider()
+                            Button {
+                                spotifyClientIDDraft = media.spotifyClientID
+                                showingSpotifySetupSheet = true
+                            } label: {
+                                Label("Spotify settings", systemImage: "gearshape")
+                            }
+                        }
                     }
+
+                    Divider()
+
+                    Button {
+                        navigation.searchQuery = savedDestination
+                        showingNavigationSheet = true
+                    } label: {
+                        Label("In-app navigation", systemImage: "magnifyingglass")
+                    }
+
+                    if navigation.guidance != nil {
+                        Button(role: .destructive) {
+                            navigation.stopNavigation()
+                        } label: {
+                            Label("Stop navigation", systemImage: "xmark.circle")
+                        }
+                    }
+
                     if !savedDestination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button {
                             openAppleMaps(destination: savedDestination)
                         } label: {
-                            Label("Open \"\(savedDestination)\"", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                            Label("Open \"\(savedDestination)\" in Apple Maps", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
                         }
                     }
                 } label: {
@@ -557,11 +602,30 @@ struct DriveModeView: View {
         Map(position: $cameraPosition, interactionModes: [.pan, .zoom, .rotate]) {
             UserAnnotation()
 
+            // Active planned Apple Maps / MapKit directions route
+            let plannedCoords = navigation.routeCoordinates
+            if plannedCoords.count > 1 {
+                MapPolyline(coordinates: plannedCoords)
+                    .stroke(SpeedometerStyle.mint.opacity(0.92), lineWidth: 6)
+            }
+
+            if let dest = navigation.guidance {
+                Annotation(dest.destinationName, coordinate: dest.destinationCoordinate, anchor: .center) {
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(SpeedometerStyle.warning, in: Circle())
+                        .overlay(Circle().stroke(.white, lineWidth: 2.5))
+                        .shadow(color: .black.opacity(0.35), radius: 5, y: 2)
+                }
+            }
+
             ForEach(routeSegments.indices, id: \.self) { index in
                 let segment = routeSegments[index]
                 if segment.count > 1 {
                     MapPolyline(coordinates: segment)
-                        .stroke(SpeedometerStyle.accent, lineWidth: 5)
+                        .stroke(SpeedometerStyle.accent, lineWidth: 4.5)
                 }
             }
 
@@ -591,6 +655,11 @@ struct DriveModeView: View {
         let duration = model.elapsedTime(at: now)
 
         return VStack(spacing: 10) {
+            if let guidance = navigation.guidance {
+                inAppGuidanceBanner(guidance)
+                    .transition(VeluraMotion.transition(.move(edge: .top).combined(with: .opacity), reduceMotion: reduceMotion))
+            }
+
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -620,6 +689,15 @@ struct DriveModeView: View {
 
                 VStack(spacing: 8) {
                     mapCameraButton(
+                        symbol: "magnifyingglass",
+                        isActive: navigation.guidance != nil,
+                        label: "Search destination for in-app navigation"
+                    ) {
+                        navigation.searchQuery = savedDestination
+                        showingNavigationSheet = true
+                    }
+
+                    mapCameraButton(
                         symbol: cameraMode == .followHeading ? "location.north.line.fill" : "location.fill",
                         isActive: cameraMode == .followHeading || cameraMode == .followUser,
                         label: cameraMode == .followHeading ? "Heading follow active" : "Follow location"
@@ -638,17 +716,8 @@ struct DriveModeView: View {
                     ) {
                         setMapCamera(.overview)
                     }
-                    .disabled(model.routeCoordinates.isEmpty)
-                    .opacity(model.routeCoordinates.isEmpty ? 0.45 : 1)
-
-                    mapCameraButton(
-                        symbol: "arrow.triangle.turn.up.right.diamond.fill",
-                        isActive: false,
-                        label: "Open in Apple Maps"
-                    ) {
-                        destinationDraft = savedDestination
-                        showingDestinationSheet = true
-                    }
+                    .disabled(model.routeCoordinates.isEmpty && navigation.routeCoordinates.isEmpty)
+                    .opacity(model.routeCoordinates.isEmpty && navigation.routeCoordinates.isEmpty ? 0.45 : 1)
                 }
             }
 
@@ -659,12 +728,68 @@ struct DriveModeView: View {
                 Rectangle().fill(SpeedometerStyle.foreground.opacity(0.14)).frame(width: 1, height: 28)
                 compactStripMetric(title: "TIME", value: cockpitDuration(duration))
                 Rectangle().fill(SpeedometerStyle.foreground.opacity(0.14)).frame(width: 1, height: 28)
-                compactStripMetric(title: "MOVING", value: cockpitDuration(model.movingTime(at: now)))
+                if let guidance = navigation.guidance, !guidance.hasArrived {
+                    compactStripMetric(
+                        title: "ETA",
+                        value: NavigationManeuverHelper.formattedETA(guidance.expectedTravelTime)
+                    )
+                } else {
+                    compactStripMetric(title: "MOVING", value: cockpitDuration(model.movingTime(at: now)))
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .veluraGlassCard(cornerRadius: 20, stroke: SpeedometerStyle.foreground.opacity(0.14))
         }
+    }
+
+    private func inAppGuidanceBanner(_ guidance: ActiveRouteGuidance) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SpeedometerStyle.mint.opacity(0.2))
+                Image(systemName: guidance.nextManeuverSymbol)
+                    .modifier(AdaptiveFont(size: 18, weight: .bold))
+                    .foregroundStyle(SpeedometerStyle.mint)
+            }
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(guidance.currentInstruction)
+                    .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.foreground)
+                    .lineLimit(2)
+                if guidance.hasArrived {
+                    Text(guidance.destinationName)
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.mint)
+                } else {
+                    Text("\(NavigationManeuverHelper.formattedDistance(guidance.distanceToNextManeuverMeters, usesMiles: usesMiles)) · \(NavigationManeuverHelper.formattedDistance(guidance.remainingDistanceMeters, usesMiles: usesMiles)) left · \(NavigationManeuverHelper.formattedETA(guidance.expectedTravelTime))")
+                        .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            Button {
+                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                    navigation.stopNavigation()
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .modifier(AdaptiveFont(size: 13, weight: .bold))
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                    .frame(width: 36, height: 36)
+                    .background(SpeedometerStyle.foreground.opacity(0.08), in: Circle())
+            }
+            .buttonStyle(VeluraGlassPressButtonStyle())
+            .accessibilityLabel("End in-app navigation")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .veluraGlassCard(cornerRadius: 20, tint: SpeedometerStyle.mint.opacity(0.12), stroke: SpeedometerStyle.mint.opacity(0.32))
     }
 
     private func mapCameraButton(
@@ -700,43 +825,82 @@ struct DriveModeView: View {
             case .followHeading:
                 cameraPosition = .userLocation(followsHeading: true, fallback: .automatic)
             case .overview:
-                cameraPosition = .region(routeRegion)
+                if let rect = navigation.activeRoute?.polyline.boundingMapRect {
+                    cameraPosition = .rect(rect.insetBy(dx: -rect.size.width * 0.2, dy: -rect.size.height * 0.2))
+                } else {
+                    cameraPosition = .region(routeRegion)
+                }
             case .manual:
                 break
             }
         }
     }
 
-    // MARK: - Media Widget (Optional, MusicKit / System Music Player)
+    // MARK: - Media Widget (Apple Music & Spotify)
 
     private var mediaWidgetBar: some View {
         HStack(spacing: 12) {
-            Group {
-                if let artwork = media.nowPlaying?.artworkImage {
-                    Image(uiImage: artwork)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(SpeedometerStyle.accent.opacity(0.14))
-                        Image(systemName: "music.note")
-                            .modifier(AdaptiveFont(size: 16, weight: .semibold))
-                            .foregroundStyle(SpeedometerStyle.accent)
+            Menu {
+                ForEach(DriveMediaSource.allCases) { source in
+                    Button {
+                        media.source = source
+                    } label: {
+                        Label(
+                            media.source == source ? "\(source.title) (Active)" : source.title,
+                            systemImage: source.symbol
+                        )
                     }
                 }
+                if media.source == .spotify {
+                    Divider()
+                    Button {
+                        spotifyClientIDDraft = media.spotifyClientID
+                        showingSpotifySetupSheet = true
+                    } label: {
+                        Label("Configure Spotify", systemImage: "gearshape")
+                    }
+                    Button {
+                        media.openSpotifyApp()
+                    } label: {
+                        Label("Open Spotify app", systemImage: "arrow.up.right.square")
+                    }
+                }
+            } label: {
+                Group {
+                    if let artwork = media.nowPlaying?.artworkImage {
+                        Image(uiImage: artwork)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(mediaSourceColor.opacity(0.18))
+                            Image(systemName: media.source.symbol)
+                                .modifier(AdaptiveFont(size: 16, weight: .semibold))
+                                .foregroundStyle(mediaSourceColor)
+                        }
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .fill(mediaSourceColor)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(SpeedometerStyle.background, lineWidth: 1.5))
+                        .padding(2)
+                }
             }
-            .frame(width: 44, height: 44)
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .accessibilityLabel("Switch music source, currently \(media.source.title)")
 
             VStack(alignment: .leading, spacing: 2) {
                 switch media.availability {
                 case .ready:
-                    Text(media.nowPlaying?.title ?? "Apple Music")
+                    Text(media.nowPlaying?.title ?? media.source.title)
                         .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
                         .lineLimit(1)
-                    Text(media.nowPlaying?.artist ?? "")
+                    Text(media.spotifyStatusMessage ?? media.nowPlaying?.artist ?? media.source.title)
                         .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .lineLimit(1)
@@ -756,11 +920,19 @@ struct DriveModeView: View {
                         .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .lineLimit(1)
+                case .spotifySetupNeeded:
+                    Text("Spotify")
+                        .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                    Text(media.spotifyStatusMessage ?? "Connect Spotify for live controls")
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .lineLimit(1)
                 case .empty:
                     Text("Nothing playing")
                         .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.foreground)
-                    Text("Start playback in Apple Music")
+                    Text("Start playback in \(media.source.title)")
                         .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(SpeedometerStyle.secondary)
                         .lineLimit(1)
@@ -771,7 +943,7 @@ struct DriveModeView: View {
 
             switch media.availability {
             case .ready:
-                HStack(spacing: 4) {
+                HStack(spacing: 2) {
                     mediaControlButton(symbol: "backward.fill", label: "Previous track") {
                         media.skipToPrevious()
                     }
@@ -787,7 +959,7 @@ struct DriveModeView: View {
                 }
             case .authorizationRequired:
                 Button("Connect") {
-                    media.requestAuthorization()
+                    media.requestAppleMusicAuthorization()
                 }
                 .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.accentForeground)
@@ -805,13 +977,54 @@ struct DriveModeView: View {
                 .padding(.horizontal, 12)
                 .frame(minHeight: 36)
                 .background(SpeedometerStyle.accent.opacity(0.14), in: Capsule())
+            case .spotifySetupNeeded:
+                HStack(spacing: 6) {
+                    Button("Connect") {
+                        spotifyClientIDDraft = media.spotifyClientID
+                        if media.spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            showingSpotifySetupSheet = true
+                        } else {
+                            media.connectSpotify()
+                        }
+                    }
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 36)
+                    .background(mediaSourceColor, in: Capsule())
+
+                    Button {
+                        media.openSpotifyApp()
+                    } label: {
+                        Image(systemName: "arrow.up.right.square")
+                            .modifier(AdaptiveFont(size: 14, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                            .frame(width: 36, height: 36)
+                            .background(SpeedometerStyle.foreground.opacity(0.08), in: Circle())
+                    }
+                    .buttonStyle(VeluraGlassPressButtonStyle())
+                    .accessibilityLabel("Open Spotify")
+                }
             case .empty:
-                EmptyView()
+                if media.source == .spotify {
+                    Button("Open") {
+                        media.openSpotifyApp()
+                    }
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(mediaSourceColor)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 36)
+                    .background(mediaSourceColor.opacity(0.16), in: Capsule())
+                }
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .veluraGlassCard(cornerRadius: 20, stroke: SpeedometerStyle.foreground.opacity(0.1))
+    }
+
+    private var mediaSourceColor: Color {
+        media.source == .spotify ? Color(red: 0.11, green: 0.84, blue: 0.38) : SpeedometerStyle.accent
     }
 
     private func mediaControlButton(symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -886,60 +1099,202 @@ struct DriveModeView: View {
         .animation(VeluraMotion.animation(VeluraMotion.morph, reduceMotion: reduceMotion), value: model.hasUnfinishedSession)
     }
 
-    // MARK: - External Navigation (Apple Maps)
+    // MARK: - In-App Navigation Search Sheet & Spotify Setup Sheet
 
-    private var externalNavigationSheet: some View {
+    private var inAppNavigationSheet: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Enter a destination to open turn-by-turn directions in Apple Maps. Velura continues recording your drive in the background.")
-                    .modifier(AdaptiveFont(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-
-                TextField("Address, place or city (optional)", text: $destinationDraft)
-                    .modifier(AdaptiveFont(size: 15, weight: .medium, design: .rounded))
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 48)
-                    .veluraGlassCard(cornerRadius: 16)
-                    .submitLabel(.go)
-                    .onSubmit {
-                        launchExternalMaps()
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                    TextField("Search address, place or city", text: $navigation.searchQuery)
+                        .modifier(AdaptiveFont(size: 15, weight: .medium, design: .rounded))
+                        .submitLabel(.search)
+                        .onSubmit {
+                            navigation.search(near: model.currentCoordinate())
+                        }
+                    if navigation.isSearching || navigation.isCalculatingRoute {
+                        ProgressView()
+                    } else if !navigation.searchQuery.isEmpty {
+                        Button("Search") {
+                            navigation.search(near: model.currentCoordinate())
+                        }
+                        .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.accent)
                     }
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 48)
+                .veluraGlassCard(cornerRadius: 16)
 
-                Button(action: launchExternalMaps) {
-                    Label(
-                        destinationDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? "Open Apple Maps"
-                            : "Directions in Apple Maps",
-                        systemImage: "arrow.triangle.turn.up.right.diamond.fill"
-                    )
-                    .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.accentForeground)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 52)
-                    .background(SpeedometerStyle.accent, in: Capsule())
+                if let error = navigation.errorMessage {
+                    Text(error)
+                        .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.warning)
+                }
+
+                if !navigation.searchResults.isEmpty {
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 8) {
+                            ForEach(navigation.searchResults) { item in
+                                Button {
+                                    startInAppNavigation(to: item)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "mappin.circle.fill")
+                                            .modifier(AdaptiveFont(size: 20, weight: .semibold))
+                                            .foregroundStyle(SpeedometerStyle.mint)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(item.name)
+                                                .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                                                .foregroundStyle(SpeedometerStyle.foreground)
+                                                .lineLimit(1)
+                                            if !item.subtitle.isEmpty {
+                                                Text(item.subtitle)
+                                                    .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                                                    .foregroundStyle(SpeedometerStyle.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        Spacer()
+                                        Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                                            .modifier(AdaptiveFont(size: 14, weight: .semibold))
+                                            .foregroundStyle(SpeedometerStyle.accent)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 11)
+                                    .veluraGlassCard(cornerRadius: 16, interactive: true)
+                                }
+                                .buttonStyle(VeluraGlassPressButtonStyle())
+                            }
+                        }
+                    }
+                } else {
+                    Text("Search any destination to calculate a driving route directly inside Velura with live Apple Maps routing, maneuver instructions, and ETA.")
+                        .modifier(AdaptiveFont(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                    Spacer()
+                }
+
+                Button {
+                    let query = navigation.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+                    savedDestination = query
+                    showingNavigationSheet = false
+                    openAppleMaps(destination: query)
+                } label: {
+                    Label("Open in Apple Maps app instead", systemImage: "arrow.up.right.square")
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 46)
+                        .veluraGlassCapsule(interactive: true)
                 }
                 .buttonStyle(VeluraGlassPressButtonStyle())
-
-                Spacer()
             }
             .padding(20)
             .background(VeluraAmbientBackdrop(intensity: 0.14))
-            .navigationTitle("Apple Maps")
+            .navigationTitle("In-App Navigation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { showingDestinationSheet = false }
+                    Button("Close") { showingNavigationSheet = false }
                 }
             }
         }
         .preferredColorScheme(appearance.preferredColorScheme)
     }
 
-    private func launchExternalMaps() {
-        let trimmed = destinationDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        savedDestination = trimmed
-        showingDestinationSheet = false
-        openAppleMaps(destination: trimmed)
+    private var spotifySetupSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Connect your Spotify account via PKCE OAuth to show album art, song title, artist, and live playback controls inside Drive Mode.")
+                    .modifier(AdaptiveFont(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.secondary)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("SPOTIFY CLIENT ID")
+                        .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                        .tracking(1)
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                    TextField("Paste Client ID from Spotify Developer Dashboard", text: $spotifyClientIDDraft)
+                        .modifier(AdaptiveFont(size: 14, weight: .medium, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 46)
+                        .veluraGlassCard(cornerRadius: 14)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("REDIRECT URI")
+                        .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                        .tracking(1)
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                    Text(DriveMediaController.spotifyRedirectURI)
+                        .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(SpeedometerStyle.accent)
+                        .textSelection(.enabled)
+                }
+
+                if let status = media.spotifyStatusMessage {
+                    Text(status)
+                        .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.warning)
+                }
+
+                Button {
+                    media.spotifyClientID = spotifyClientIDDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    showingSpotifySetupSheet = false
+                    media.connectSpotify()
+                } label: {
+                    Label("Sign in with Spotify", systemImage: "dot.radiowaves.left.and.right")
+                        .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                        .background(Color(red: 0.11, green: 0.84, blue: 0.38), in: Capsule())
+                }
+                .buttonStyle(VeluraGlassPressButtonStyle())
+                .disabled(spotifyClientIDDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if media.isSpotifyConnected {
+                    Button(role: .destructive) {
+                        media.disconnectSpotify()
+                        showingSpotifySetupSheet = false
+                    } label: {
+                        Text("Disconnect Spotify")
+                            .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.warning)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 44)
+                            .veluraGlassCapsule(interactive: true)
+                    }
+                    .buttonStyle(VeluraGlassPressButtonStyle())
+                }
+
+                Spacer()
+            }
+            .padding(20)
+            .background(VeluraAmbientBackdrop(intensity: 0.14))
+            .navigationTitle("Spotify Setup")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { showingSpotifySetupSheet = false }
+                }
+            }
+        }
+        .preferredColorScheme(appearance.preferredColorScheme)
+    }
+
+    private func startInAppNavigation(to destination: NavigationDestinationItem) {
+        savedDestination = destination.name
+        showingNavigationSheet = false
+        withAnimation(VeluraMotion.animation(VeluraMotion.morph, reduceMotion: reduceMotion)) {
+            layoutRawValue = DriveModeLayout.navigation.rawValue
+        }
+        navigation.startNavigation(to: destination, from: model.currentCoordinate())
+        setMapCamera(.followHeading)
     }
 
     private func openAppleMaps(destination: String) {
