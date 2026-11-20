@@ -882,19 +882,21 @@ struct ContentView: View {
                 }
             }
 
-            if dynamicTypeSize.isAccessibilitySize {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                    rangeButton(20)
-                    rangeButton(50)
-                    rangeButton(100)
-                    customRangeButton
-                }
-            } else {
-                HStack(spacing: 4) {
-                    rangeButton(20)
-                    rangeButton(50)
-                    rangeButton(100)
-                    customRangeButton
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                        rangeButton(20)
+                        rangeButton(50)
+                        rangeButton(100)
+                        customRangeButton
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        rangeButton(20)
+                        rangeButton(50)
+                        rangeButton(100)
+                        customRangeButton
+                    }
                 }
             }
             .padding(4)
