@@ -1,6 +1,13 @@
 import MapKit
 import SwiftUI
 
+enum ActiveMapCameraMode: Equatable {
+    case followUser
+    case followHeading
+    case overview
+    case manual
+}
+
 struct ActiveDriveView: View {
     @ObservedObject private var appearance = AppAppearance.shared
     @ObservedObject var model: SpeedometerModel
@@ -8,7 +15,10 @@ struct ActiveDriveView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Namespace private var mapHeaderGlassNamespace
+    @Namespace private var mapControlsGlassNamespace
     @State private var cameraPosition: MapCameraPosition = .userLocation(followsHeading: true, fallback: .automatic)
+    @State private var cameraMode: ActiveMapCameraMode = .followHeading
+    @State private var isProgrammaticCameraUpdate = false
     @State private var showingEndConfirmation = false
 
     let onClose: () -> Void
@@ -60,9 +70,15 @@ struct ActiveDriveView: View {
         ZStack {
             routeMap
 
-            VStack(spacing: 0) {
+            VStack(spacing: 12) {
                 header
-                Spacer(minLength: 16)
+
+                HStack {
+                    Spacer()
+                    mapCameraControls
+                }
+
+                Spacer(minLength: 10)
                 summaryCard
             }
             .padding(.horizontal, 20)
@@ -74,7 +90,15 @@ struct ActiveDriveView: View {
         .background(appearance.background)
         .preferredColorScheme(appearance.preferredColorScheme)
         .toolbar(.hidden, for: .navigationBar)
-        .onAppear(perform: fitRoute)
+        .sensoryFeedback(.selection, trigger: cameraMode)
+        .sensoryFeedback(.impact(weight: .medium), trigger: model.isSessionActive)
+        .onAppear {
+            if model.isSessionActive {
+                applyCameraMode(.followHeading)
+            } else if !model.routeCoordinates.isEmpty {
+                applyCameraMode(.overview)
+            }
+        }
         .confirmationDialog("End this drive?", isPresented: $showingEndConfirmation, titleVisibility: .visible) {
             Button("End drive and save", role: .destructive) {
                 model.finishSession()
@@ -87,7 +111,7 @@ struct ActiveDriveView: View {
     }
 
     private var routeMap: some View {
-        Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
+        Map(position: $cameraPosition, interactionModes: [.pan, .zoom, .rotate]) {
             UserAnnotation()
 
             ForEach(routeSegments.indices, id: \.self) { index in
@@ -111,15 +135,102 @@ struct ActiveDriveView: View {
             }
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
+        .onMapCameraChange(frequency: .onEnd) { _ in
+            if isProgrammaticCameraUpdate {
+                isProgrammaticCameraUpdate = false
+            } else {
+                cameraMode = .manual
+            }
+        }
         .ignoresSafeArea()
         .accessibilityLabel("Live drive route map")
     }
 
+    private func applyCameraMode(_ mode: ActiveMapCameraMode) {
+        cameraMode = mode
+        isProgrammaticCameraUpdate = true
+        withAnimation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion)) {
+            switch mode {
+            case .followUser:
+                cameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
+            case .followHeading:
+                cameraPosition = .userLocation(followsHeading: true, fallback: .automatic)
+            case .overview:
+                if !model.routeCoordinates.isEmpty {
+                    cameraPosition = .region(routeRegion)
+                } else {
+                    cameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
+                }
+            case .manual:
+                break
+            }
+        }
+    }
+
     private func fitRoute() {
         guard !model.routeCoordinates.isEmpty else { return }
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.45)) {
-            cameraPosition = .region(routeRegion)
+        applyCameraMode(.overview)
+    }
+
+    private var mapCameraControls: some View {
+        GlassEffectContainer(spacing: 8) {
+            VStack(spacing: 8) {
+                cameraControlButton(
+                    symbol: "location.fill",
+                    isActive: cameraMode == .followUser,
+                    id: "active-map-follow",
+                    label: "Auto-follow location"
+                ) {
+                    applyCameraMode(.followUser)
+                }
+
+                cameraControlButton(
+                    symbol: "location.north.line.fill",
+                    isActive: cameraMode == .followHeading,
+                    id: "active-map-heading",
+                    label: "Follow heading"
+                ) {
+                    applyCameraMode(.followHeading)
+                }
+
+                cameraControlButton(
+                    symbol: "map",
+                    isActive: cameraMode == .overview,
+                    id: "active-map-overview",
+                    label: "Show full route"
+                ) {
+                    fitRoute()
+                }
+                .disabled(model.routeCoordinates.isEmpty)
+                .opacity(model.routeCoordinates.isEmpty ? 0.45 : 1)
+            }
         }
+    }
+
+    private func cameraControlButton(
+        symbol: String,
+        isActive: Bool,
+        id: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .modifier(AdaptiveFont(size: 16, weight: .semibold))
+                .foregroundStyle(isActive ? SpeedometerStyle.accentForeground : SpeedometerStyle.foreground)
+                .frame(width: 46, height: 46)
+                .background {
+                    if isActive {
+                        Circle().fill(SpeedometerStyle.accent)
+                    }
+                }
+                .contentShape(Circle())
+                .veluraGlassCircle(tint: isActive ? nil : .clear, interactive: true)
+                .glassEffectID(id, in: mapControlsGlassNamespace)
+        }
+        .buttonStyle(VeluraGlassPressButtonStyle())
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private var header: some View {
@@ -243,23 +354,50 @@ struct ActiveDriveView: View {
                 }
             }
 
-            Button {
-                showingEndConfirmation = true
-            } label: {
-                Label("End drive", systemImage: "stop.fill")
-                    .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.warning)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 54)
-                    .background(SpeedometerStyle.warning.opacity(0.14), in: Capsule())
-                    .overlay {
-                        Capsule()
-                            .stroke(SpeedometerStyle.warning.opacity(0.32), lineWidth: 1)
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.morph, reduceMotion: reduceMotion)) {
+                        if model.isSessionActive {
+                            model.pauseSession()
+                        } else {
+                            model.startSession()
+                        }
                     }
+                } label: {
+                    Label(
+                        model.isSessionActive ? "Pause" : "Resume",
+                        systemImage: model.isSessionActive ? "pause.fill" : "play.fill"
+                    )
+                    .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.accentForeground)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .background(SpeedometerStyle.accent, in: Capsule())
                     .contentShape(Capsule())
+                }
+                .buttonStyle(VeluraGlassPressButtonStyle())
+                .disabled(model.isDriveStorageLoading || model.isFinishingSession)
+                .accessibilityHint(model.isSessionActive ? "Pauses GPS recording without ending the drive" : "Resumes recording into a new route segment")
+
+                Button {
+                    showingEndConfirmation = true
+                } label: {
+                    Label("End", systemImage: "stop.fill")
+                        .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.warning)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 52)
+                        .background(SpeedometerStyle.warning.opacity(0.14), in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(SpeedometerStyle.warning.opacity(0.32), lineWidth: 1)
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(VeluraGlassPressButtonStyle())
+                .disabled(model.isFinishingSession)
+                .accessibilityHint("Ends location tracking and saves the recorded drive summary")
             }
-            .buttonStyle(VeluraGlassPressButtonStyle())
-            .accessibilityHint("Ends location tracking and saves the recorded drive summary")
         }
         .padding(.horizontal, 17)
         .padding(.top, 11)

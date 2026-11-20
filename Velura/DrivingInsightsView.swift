@@ -1,25 +1,5 @@
 import SwiftUI
 
-private enum InsightsPeriod: String, CaseIterable, Identifiable {
-    case week = "Week"
-    case month = "Month"
-
-    var id: String { rawValue }
-    var previousLabel: String { self == .week ? "last week" : "last month" }
-    var currentLabel: String { self == .week ? "this week" : "this month" }
-}
-
-private struct InsightBucket: Identifiable {
-    let index: Int
-    let start: Date
-    let end: Date
-    let distanceKm: Double
-    let label: String
-    let isCurrent: Bool
-
-    var id: Int { index }
-}
-
 struct DrivingInsightsView: View {
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.dismiss) private var dismiss
@@ -28,106 +8,79 @@ struct DrivingInsightsView: View {
     @StateObject private var store = DriveHistoryStore.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var selectedPeriod: InsightsPeriod = .week
+    @State private var selectedBucketIndex: Int?
     @State private var hasAppeared = false
     @Namespace private var periodSelectionNamespace
 
     private var distanceUnit: String { usesMiles ? "mi" : "km" }
     private var speedUnit: String { usesMiles ? "mph" : "km/h" }
+    private var elevationUnit: String { usesMiles ? "ft" : "m" }
     private var conversion: Double { usesMiles ? 0.621371 : 1 }
-
-    private var currentInterval: DateInterval {
-        let component: Calendar.Component = selectedPeriod == .week ? .weekOfYear : .month
-        var calendar = Calendar.current
-        if selectedPeriod == .week { calendar.firstWeekday = 2 }
-        return calendar.dateInterval(of: component, for: .now)
-            ?? DateInterval(start: .now, end: Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now)
-    }
-
-    private var previousInterval: DateInterval {
-        let calendar = Calendar.current
-        if selectedPeriod == .week {
-            let end = currentInterval.start
-            let start = calendar.date(byAdding: .day, value: -7, to: end) ?? end
-            return DateInterval(start: start, end: end)
-        }
-
-        let previousMonth = calendar.date(byAdding: .month, value: -1, to: .now) ?? .now
-        return calendar.dateInterval(of: .month, for: previousMonth)
-            ?? DateInterval(start: calendar.date(byAdding: .month, value: -1, to: currentInterval.start) ?? currentInterval.start, end: currentInterval.start)
-    }
+    private var elevationConversion: Double { usesMiles ? 3.28084 : 1 }
 
     private var currentDrives: [DriveRecord] {
-        store.drives.filter { $0.date >= currentInterval.start && $0.date < currentInterval.end }
+        DrivingInsightsCalculator.drives(in: selectedPeriod, from: store.drives)
     }
 
-    private var previousDistanceKm: Double {
-        store.drives
-            .filter { $0.date >= previousInterval.start && $0.date < previousInterval.end }
+    private var summary: DrivingInsightsSummary {
+        DrivingInsightsCalculator.summarize(drives: currentDrives)
+    }
+
+    private var previousDistanceKm: Double? {
+        guard let previous = DrivingInsightsCalculator.previousInterval(for: selectedPeriod) else { return nil }
+        return store.drives
+            .filter { $0.date >= previous.start && $0.date < previous.end }
             .reduce(0) { $0 + $1.distanceKm }
     }
 
-    private var currentDistanceKm: Double {
-        currentDrives.reduce(0) { $0 + $1.distanceKm }
-    }
-
-    private var averageDistanceKm: Double {
-        guard !currentDrives.isEmpty else { return 0 }
-        return currentDistanceKm / Double(currentDrives.count)
-    }
-
-    private var topSpeedKmh: Double? {
-        currentDrives.map(\.topSpeedKmh).max()
-    }
-
     private var comparisonSummary: String {
+        guard let previousLabel = selectedPeriod.previousLabel, let previousDistanceKm else {
+            return summary.driveCount > 0
+                ? "\(summary.driveCount) \(summary.driveCount == 1 ? "drive" : "drives") recorded on this device"
+                : "No drives recorded yet"
+        }
         guard previousDistanceKm > 0 else {
-            return currentDistanceKm > 0 ? "First distance \(selectedPeriod.currentLabel)" : "No distance yet \(selectedPeriod.currentLabel)"
+            return summary.totalDistanceKm > 0
+                ? "First distance \(selectedPeriod.currentLabel)"
+                : "No distance yet \(selectedPeriod.currentLabel)"
         }
 
-        let change = (currentDistanceKm - previousDistanceKm) / previousDistanceKm * 100
+        let change = (summary.totalDistanceKm - previousDistanceKm) / previousDistanceKm * 100
         let percentage = Int(abs(change).rounded())
-        if percentage == 0 { return "Same as \(selectedPeriod.previousLabel)" }
-        return "\(percentage)% \(change > 0 ? "more" : "less") than \(selectedPeriod.previousLabel)"
+        if percentage == 0 { return "Same as \(previousLabel)" }
+        return "\(percentage)% \(change > 0 ? "more" : "less") than \(previousLabel)"
     }
 
     private var comparisonSymbol: String {
-        guard previousDistanceKm > 0 || currentDistanceKm > 0 else { return "minus" }
-        if currentDistanceKm == previousDistanceKm { return "equal" }
-        return currentDistanceKm > previousDistanceKm ? "arrow.up" : "arrow.down"
+        guard let previousDistanceKm else { return "chart.line.uptrend.xyaxis" }
+        guard previousDistanceKm > 0 || summary.totalDistanceKm > 0 else { return "minus" }
+        if summary.totalDistanceKm == previousDistanceKm { return "equal" }
+        return summary.totalDistanceKm > previousDistanceKm ? "arrow.up" : "arrow.down"
     }
 
     private var comparisonColor: Color {
-        currentDistanceKm >= previousDistanceKm && currentDistanceKm > 0 ? SpeedometerStyle.mint : SpeedometerStyle.secondary
+        guard let previousDistanceKm else { return SpeedometerStyle.accent }
+        return summary.totalDistanceKm >= previousDistanceKm && summary.totalDistanceKm > 0
+            ? SpeedometerStyle.mint
+            : SpeedometerStyle.secondary
     }
 
     private var chartBuckets: [InsightBucket] {
-        let calendar = Calendar.current
-        let dayCount = max(1, calendar.dateComponents([.day], from: currentInterval.start, to: currentInterval.end).day ?? 7)
-        let bucketCount = selectedPeriod == .week ? 7 : max(1, Int(ceil(Double(dayCount) / 7)))
-        let now = Date.now
+        DrivingInsightsCalculator.buckets(for: selectedPeriod, drives: currentDrives)
+    }
 
-        return (0..<bucketCount).compactMap { index in
-            let offset = selectedPeriod == .week ? index : index * 7
-            guard let start = calendar.date(byAdding: .day, value: offset, to: currentInterval.start), start < currentInterval.end else { return nil }
-            let nextOffset = selectedPeriod == .week ? offset + 1 : offset + 7
-            let proposedEnd = calendar.date(byAdding: .day, value: nextOffset, to: currentInterval.start) ?? currentInterval.end
-            let end = min(proposedEnd, currentInterval.end)
-            let distance = currentDrives
-                .filter { $0.date >= start && $0.date < end }
-                .reduce(0) { $0 + $1.distanceKm }
-            let label = selectedPeriod == .week
-                ? start.formatted(.dateTime.weekday(.abbreviated))
-                : "\(calendar.component(.day, from: start))"
+    private var selectedBucket: InsightBucket? {
+        guard let selectedBucketIndex else { return nil }
+        return chartBuckets.first(where: { $0.index == selectedBucketIndex })
+    }
 
-            return InsightBucket(
-                index: index,
-                start: start,
-                end: end,
-                distanceKm: distance,
-                label: label,
-                isCurrent: now >= start && now < end
-            )
+    private var latestElevationDrive: (drive: DriveRecord, elevation: ElevationSummary)? {
+        for drive in currentDrives {
+            if let elevation = DrivingInsightsCalculator.elevationProfile(for: drive) {
+                return (drive, elevation)
+            }
         }
+        return nil
     }
 
     private var chartAxisStep: Double {
@@ -139,7 +92,7 @@ struct DrivingInsightsView: View {
 
     private var chartAxisMaximum: Double { chartAxisStep * 3 }
     private var chartBucketSpacing: CGFloat {
-        chartBuckets.count > 5 ? (dynamicTypeSize.isAccessibilitySize ? 3 : 12) : 18
+        chartBuckets.count > 5 ? (dynamicTypeSize.isAccessibilitySize ? 3 : 10) : 14
     }
 
     var body: some View {
@@ -148,29 +101,40 @@ struct DrivingInsightsView: View {
                 VeluraAmbientBackdrop(intensity: 0.16)
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
+                    VStack(spacing: 18) {
                         header
+                        periodPicker
 
                         if store.drives.isEmpty {
                             emptyState
-                                .padding(.top, 42)
+                                .padding(.top, 24)
                                 .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.98)), reduceMotion: reduceMotion))
                         } else {
                             distanceSummary
-                                .padding(.top, 28)
+                                .padding(.top, 6)
                                 .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
-                            distanceChart(height: geometry.size.width > geometry.size.height ? 156 : 228)
-                                .padding(.top, 25)
-                                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
-                            metricsSummary
-                                .padding(.top, 24)
-                                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
+
+                            if currentDrives.isEmpty {
+                                periodEmptyState
+                                    .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.98)), reduceMotion: reduceMotion))
+                            } else {
+                                distanceChart(height: geometry.size.width > geometry.size.height ? 156 : 216)
+                                    .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
+
+                                metricsGrid
+                                    .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
+
+                                if let latestElevation = latestElevationDrive {
+                                    elevationSection(drive: latestElevation.drive, elevation: latestElevation.elevation)
+                                        .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .bottom)), reduceMotion: reduceMotion))
+                                }
+                            }
                         }
                     }
                     .padding(.horizontal, geometry.size.width < 380 ? 16 : 22)
                     .padding(.top, 12)
                     .padding(.bottom, 30)
-                    .frame(maxWidth: 520)
+                    .frame(maxWidth: 560)
                     .frame(maxWidth: .infinity)
                 }
             }
@@ -179,8 +143,13 @@ struct DrivingInsightsView: View {
         .toolbar(.visible, for: .tabBar)
         .preferredColorScheme(appearance.preferredColorScheme)
         .sensoryFeedback(.selection, trigger: selectedPeriod)
+        .sensoryFeedback(.selection, trigger: selectedBucketIndex)
         .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: selectedPeriod)
+        .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: selectedBucketIndex)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: store.drives.count)
+        .onChange(of: selectedPeriod) { _, _ in
+            selectedBucketIndex = nil
+        }
         .onAppear {
             withAnimation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion)) {
                 hasAppeared = true
@@ -188,36 +157,17 @@ struct DrivingInsightsView: View {
         }
     }
 
-    @ViewBuilder
     private var header: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    backButton
-                    Text("Driving insights")
-                        .modifier(AdaptiveFont(size: 18, weight: .semibold, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.foreground)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                periodPicker
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-            }
-        } else {
-            HStack(spacing: 7) {
-                backButton
-                Text("Driving insights")
-                    .modifier(AdaptiveFont(size: 18, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .layoutPriority(1)
-                Spacer(minLength: 2)
-                periodPicker
-                    .frame(width: 136, height: 48)
-            }
-            .frame(minHeight: 48)
+        HStack(spacing: 10) {
+            backButton
+            Text("Driving insights")
+                .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.foreground)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Spacer()
         }
+        .frame(minHeight: 44)
     }
 
     private var backButton: some View {
@@ -252,8 +202,8 @@ struct DrivingInsightsView: View {
                                 Capsule()
                                     .fill(LinearGradient(
                                         colors: [
-                                            SpeedometerStyle.accent.opacity(0.94),
-                                            SpeedometerStyle.accent.opacity(0.78)
+                                            SpeedometerStyle.accent.opacity(0.96),
+                                            SpeedometerStyle.accent.opacity(0.8)
                                         ],
                                         startPoint: .top,
                                         endPoint: .bottom
@@ -279,13 +229,13 @@ struct DrivingInsightsView: View {
 
     private var distanceSummary: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(selectedPeriod == .week ? "THIS WEEK" : "THIS MONTH")
+            Text(selectedPeriod.sectionTitle)
                 .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
                 .tracking(1.35)
                 .foregroundStyle(SpeedometerStyle.secondary)
 
-            Text("\(String(format: "%.1f", currentDistanceKm * conversion)) \(distanceUnit)")
-                .modifier(AdaptiveFont(size: 43, weight: .bold, design: .rounded).monospacedDigit())
+            Text("\(String(format: "%.1f", summary.totalDistanceKm * conversion)) \(distanceUnit)")
+                .modifier(AdaptiveFont(size: 42, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .contentTransition(.numericText())
                 .lineLimit(1)
@@ -295,7 +245,7 @@ struct DrivingInsightsView: View {
                 Image(systemName: comparisonSymbol)
                     .modifier(AdaptiveFont(size: 14, weight: .bold))
                 Text(comparisonSummary)
-                    .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
                     .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(comparisonColor)
@@ -305,7 +255,16 @@ struct DrivingInsightsView: View {
     }
 
     private func distanceChart(height: CGFloat) -> some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            if let bucket = selectedBucket {
+                bucketTooltip(bucket)
+                    .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
+            } else {
+                Text("Tap a bar to inspect exact values")
+                    .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.secondary)
+            }
+
             HStack(alignment: .top, spacing: 8) {
                 GeometryReader { geometry in
                     ZStack(alignment: .bottom) {
@@ -326,29 +285,46 @@ struct DrivingInsightsView: View {
                             ForEach(chartBuckets) { bucket in
                                 let value = bucket.distanceKm * conversion
                                 let targetHeight = value > 0
-                                    ? max(4, geometry.size.height * CGFloat(value / chartAxisMaximum))
+                                    ? max(6, geometry.size.height * CGFloat(value / chartAxisMaximum))
                                     : 0
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .fill(LinearGradient(
-                                        colors: bucket.isCurrent
-                                            ? [SpeedometerStyle.accent, SpeedometerStyle.accent.opacity(0.78)]
-                                            : [SpeedometerStyle.accent.opacity(0.88), SpeedometerStyle.accent.opacity(0.58)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ))
-                                    .frame(height: hasAppeared || reduceMotion ? targetHeight : 0)
-                                    .frame(maxWidth: .infinity)
-                                    .shadow(color: bucket.isCurrent ? SpeedometerStyle.accent.opacity(0.18) : .clear, radius: 8, y: 1)
-                                    .animation(
-                                        VeluraMotion.animation(
-                                            VeluraMotion.content.delay(Double(bucket.index) * 0.03),
-                                            reduceMotion: reduceMotion
-                                        ),
-                                        value: hasAppeared
-                                    )
+                                let isSelected = selectedBucketIndex == bucket.index
+                                let isDimmed = selectedBucketIndex != nil && !isSelected
+
+                                Button {
+                                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                                        selectedBucketIndex = isSelected ? nil : bucket.index
+                                    }
+                                } label: {
+                                    VStack(spacing: 0) {
+                                        Spacer(minLength: 0)
+                                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                            .fill(LinearGradient(
+                                                colors: (isSelected || bucket.isCurrent)
+                                                    ? [SpeedometerStyle.accent, SpeedometerStyle.mint.opacity(0.86)]
+                                                    : [SpeedometerStyle.accent.opacity(0.84), SpeedometerStyle.accent.opacity(0.5)],
+                                                startPoint: .top,
+                                                endPoint: .bottom
+                                            ))
+                                            .opacity(isDimmed ? 0.38 : 1)
+                                            .frame(height: hasAppeared || reduceMotion ? targetHeight : 0)
+                                            .shadow(color: isSelected ? SpeedometerStyle.accent.opacity(0.36) : .clear, radius: 10, y: 2)
+                                            .animation(
+                                                VeluraMotion.animation(
+                                                    VeluraMotion.content.delay(Double(bucket.index) * 0.03),
+                                                    reduceMotion: reduceMotion
+                                                ),
+                                                value: hasAppeared
+                                            )
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("\(bucket.detailLabel), \(String(format: "%.1f", value)) \(distanceUnit), \(bucket.driveCount) drives")
+                                .accessibilityAddTraits(isSelected ? .isSelected : [])
                             }
                         }
-                        .padding(.horizontal, 13)
+                        .padding(.horizontal, 10)
                     }
                 }
                 .frame(height: height)
@@ -372,78 +348,229 @@ struct DrivingInsightsView: View {
 
             HStack(spacing: chartBucketSpacing) {
                 ForEach(chartBuckets) { bucket in
-                    Text(bucket.label)
-                        .modifier(AdaptiveFont(size: 11, weight: bucket.isCurrent ? .semibold : .medium, design: .rounded))
-                        .foregroundStyle(bucket.isCurrent ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 44)
-                        .background {
-                            if bucket.isCurrent {
-                                Capsule()
-                                    .fill(SpeedometerStyle.foreground.opacity(0.085))
-                                    .veluraGlassCapsule()
-                            }
+                    let isHighlighted = selectedBucketIndex == bucket.index || (selectedBucketIndex == nil && bucket.isCurrent)
+                    Button {
+                        withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                            selectedBucketIndex = selectedBucketIndex == bucket.index ? nil : bucket.index
                         }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(bucket.label), \(String(format: "%.1f", bucket.distanceKm * conversion)) \(distanceUnit)")
+                    } label: {
+                        Text(bucket.label)
+                            .modifier(AdaptiveFont(size: 11, weight: isHighlighted ? .semibold : .medium, design: .rounded))
+                            .foregroundStyle(isHighlighted ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 40)
+                            .background {
+                                if isHighlighted {
+                                    Capsule()
+                                        .fill(SpeedometerStyle.accent.opacity(selectedBucketIndex == bucket.index ? 0.24 : 0.11))
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHidden(true)
                 }
             }
             .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 64 : 30)
         }
+        .padding(16)
+        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.1))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(selectedPeriod == .week ? "Distance by day" : "Distance by week")
+        .accessibilityLabel("Distance chart for \(selectedPeriod.currentLabel)")
     }
 
-    private var metricsSummary: some View {
-        let drivesMetric = metric(value: "\(currentDrives.count)", label: "DRIVES")
-        let averageMetric = metric(value: currentDrives.isEmpty ? "—" : "\(String(format: "%.1f", averageDistanceKm * conversion)) \(distanceUnit)", label: "AVG. DISTANCE")
-        let speedMetric = metric(value: topSpeedKmh.map { "\(String(format: "%.0f", $0 * conversion)) \(speedUnit)" } ?? "—", label: "TOP SPEED")
-
-        return Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 12) {
-                    drivesMetric
-                    Rectangle().fill(SpeedometerStyle.foreground.opacity(0.15)).frame(height: 1)
-                    averageMetric
-                    Rectangle().fill(SpeedometerStyle.foreground.opacity(0.15)).frame(height: 1)
-                    speedMetric
-                }
-            } else {
-                HStack(spacing: 0) {
-                    drivesMetric
-                    metricDivider
-                    averageMetric
-                    metricDivider
-                    speedMetric
-                }
+    private func bucketTooltip(_ bucket: InsightBucket) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bucket.detailLabel)
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.foreground)
+                Text("\(bucket.driveCount) \(bucket.driveCount == 1 ? "drive" : "drives") · \(insightsDuration(bucket.duration))")
+                    .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.secondary)
             }
+            Spacer()
+            Text("\(String(format: "%.1f", bucket.distanceKm * conversion)) \(distanceUnit)")
+                .modifier(AdaptiveFont(size: 16, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(SpeedometerStyle.accent)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 20)
-        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.11))
+        .padding(.vertical, 8)
+        .background(SpeedometerStyle.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var metricDivider: some View {
-        Rectangle()
-            .fill(SpeedometerStyle.foreground.opacity(0.15))
-            .frame(width: 1, height: 46)
+    private var metricsGrid: some View {
+        let columns = [
+            GridItem(.flexible(), spacing: 10),
+            GridItem(.flexible(), spacing: 10)
+        ]
+
+        return LazyVGrid(columns: columns, spacing: 10) {
+            metricTile(
+                title: "DRIVES",
+                value: "\(summary.driveCount)",
+                symbol: "car.fill"
+            )
+            metricTile(
+                title: "AVG. DISTANCE",
+                value: "\(String(format: "%.1f", summary.averageDriveDistanceKm * conversion)) \(distanceUnit)",
+                symbol: "point.topleft.down.to.point.bottomright.curvepath"
+            )
+            metricTile(
+                title: "AVG. SPEED",
+                value: summary.averageSpeedKmh > 0 ? "\(Int((summary.averageSpeedKmh * conversion).rounded())) \(speedUnit)" : "—",
+                symbol: "speedometer"
+            )
+            metricTile(
+                title: "TOP SPEED",
+                value: summary.topSpeedKmh.map { "\(Int(($0 * conversion).rounded())) \(speedUnit)" } ?? "—",
+                symbol: "flame.fill"
+            )
+            metricTile(
+                title: "TOTAL TIME",
+                value: insightsDuration(summary.totalDuration),
+                symbol: "clock.fill"
+            )
+            metricTile(
+                title: "MOVING TIME",
+                value: summary.hasMovingDurationData ? insightsDuration(summary.movingDuration) : "—",
+                symbol: "figure.walk.motion"
+            )
+            if let gain = summary.elevationGainMeters, let loss = summary.elevationLossMeters {
+                metricTile(
+                    title: "ELEVATION GAIN",
+                    value: "+\(Int((gain * elevationConversion).rounded())) \(elevationUnit)",
+                    symbol: "arrow.up.right"
+                )
+                metricTile(
+                    title: "ELEVATION LOSS",
+                    value: "-\(Int((loss * elevationConversion).rounded())) \(elevationUnit)",
+                    symbol: "arrow.down.right"
+                )
+            }
+        }
     }
 
-    private func metric(value: String, label: String) -> some View {
+    private func metricTile(title: String, value: String, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .modifier(AdaptiveFont(size: 11, weight: .semibold))
+                    .foregroundStyle(SpeedometerStyle.accent)
+                Text(title)
+                    .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                    .tracking(0.7)
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
             Text(value)
-                .modifier(AdaptiveFont(size: 21, weight: .semibold, design: .rounded).monospacedDigit())
+                .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(label)
-                .modifier(AdaptiveFont(size: 10, weight: .semibold, design: .rounded))
-                .tracking(0.6)
-                .foregroundStyle(SpeedometerStyle.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .veluraGlassCard(cornerRadius: 20, stroke: SpeedometerStyle.foreground.opacity(0.1))
         .accessibilityElement(children: .combine)
+    }
+
+    private func elevationSection(drive: DriveRecord, elevation: ElevationSummary) -> some View {
+        let gainText = "+\(Int((elevation.gainMeters * elevationConversion).rounded())) \(elevationUnit)"
+        let lossText = "-\(Int((elevation.lossMeters * elevationConversion).rounded())) \(elevationUnit)"
+        let minText = "\(Int((elevation.minMeters * elevationConversion).rounded())) \(elevationUnit)"
+        let maxText = "\(Int((elevation.maxMeters * elevationConversion).rounded())) \(elevationUnit)"
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("LATEST ELEVATION PROFILE")
+                        .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                        .tracking(1.1)
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                    Text(drive.date.formatted(date: .abbreviated, time: .shortened))
+                        .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                }
+                Spacer()
+                Text("\(gainText) · \(lossText)")
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(SpeedometerStyle.accent)
+            }
+
+            Canvas { context, size in
+                let samples = elevation.samples
+                guard samples.count >= 2 else { return }
+                let span = max(1, elevation.maxMeters - elevation.minMeters)
+
+                var strokePath = Path()
+                var areaPath = Path()
+                for (index, sample) in samples.enumerated() {
+                    let x = CGFloat(index) / CGFloat(samples.count - 1) * size.width
+                    let normalized = (sample.altitudeMeters - elevation.minMeters) / span
+                    let y = size.height - CGFloat(normalized) * (size.height - 10) - 5
+                    if index == 0 {
+                        strokePath.move(to: CGPoint(x: x, y: y))
+                        areaPath.move(to: CGPoint(x: x, y: size.height))
+                        areaPath.addLine(to: CGPoint(x: x, y: y))
+                    } else {
+                        strokePath.addLine(to: CGPoint(x: x, y: y))
+                        areaPath.addLine(to: CGPoint(x: x, y: y))
+                    }
+                }
+                areaPath.addLine(to: CGPoint(x: size.width, y: size.height))
+                areaPath.closeSubpath()
+
+                context.fill(
+                    areaPath,
+                    with: .linearGradient(
+                        Gradient(colors: [SpeedometerStyle.accent.opacity(0.32), .clear]),
+                        startPoint: CGPoint(x: 0, y: 0),
+                        endPoint: CGPoint(x: 0, y: size.height)
+                    )
+                )
+                context.stroke(
+                    strokePath,
+                    with: .color(SpeedometerStyle.accent),
+                    style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round)
+                )
+            }
+            .frame(height: 82)
+
+            HStack {
+                Text("Min \(minText)")
+                Spacer()
+                Text("Max \(maxText)")
+            }
+            .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+            .foregroundStyle(SpeedometerStyle.secondary)
+        }
+        .padding(16)
+        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.1))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Latest elevation profile, gain \(gainText), loss \(lossText), range \(minText) to \(maxText)")
+    }
+
+    private var periodEmptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "calendar")
+                .modifier(AdaptiveFont(size: 26, weight: .light))
+                .foregroundStyle(SpeedometerStyle.accent)
+            Text("No drives \(selectedPeriod.currentLabel)")
+                .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.foreground)
+            Text("Switch periods to inspect earlier driving activity.")
+                .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(SpeedometerStyle.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 32)
+        .veluraGlassCard(cornerRadius: 24)
     }
 
     private var emptyState: some View {
@@ -459,7 +586,7 @@ struct DrivingInsightsView: View {
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .multilineTextAlignment(.center)
 
-            Text("Save a drive from the Speed tab to see your distance trends, average drive and top speed here. Your history stays on this device.")
+            Text("Save a drive from the Speed tab to see your distance trends, speed averages, elevation and totals here. Your history stays on this device.")
                 .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .multilineTextAlignment(.center)
@@ -470,6 +597,14 @@ struct DrivingInsightsView: View {
         .padding(.vertical, 36)
         .veluraGlassCard(cornerRadius: 24)
     }
+}
+
+private func insightsDuration(_ duration: TimeInterval) -> String {
+    let totalMinutes = max(0, Int(duration / 60))
+    let hours = totalMinutes / 60
+    let minutes = totalMinutes % 60
+    if hours > 0 { return "\(hours)h \(minutes)m" }
+    return "\(minutes)m"
 }
 
 #Preview {

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 private enum HistoryFilter: String, CaseIterable, Identifiable {
     case all = "All"
@@ -717,6 +718,9 @@ private struct DriveDetailView: View {
     @State private var showingDeleteConfirmation = false
     @State private var showingRoute = false
     @State private var routeCoordinates: [DriveRoutePoint]
+    @State private var exportedGPXItem: ExportedGPXItem?
+    @State private var showingExportError = false
+    @State private var exportErrorMessage = ""
 
     init(drive: DriveRecord, onDeleteRoute: @escaping () -> Void, onDelete: @escaping () -> Void) {
         self.drive = drive
@@ -813,6 +817,23 @@ private struct DriveDetailView: View {
                             .buttonStyle(VeluraGlassPressButtonStyle())
                             .accessibilityHint("Opens the recorded route, or an explanation if no route was saved")
 
+                            if routeCoordinates.count >= 2 {
+                                Button {
+                                    exportGPX()
+                                } label: {
+                                    Label("Export GPX", systemImage: "square.and.arrow.up")
+                                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(SpeedometerStyle.foreground)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(minHeight: 50)
+                                        .contentShape(Capsule())
+                                        .veluraGlassCapsule(interactive: true)
+                                        .glassEffectID("detail-export-gpx", in: detailActionsGlassNamespace)
+                                }
+                                .buttonStyle(VeluraGlassPressButtonStyle())
+                                .accessibilityHint("Exports this drive's recorded route as a GPX file")
+                            }
+
                             Button(role: .destructive) {
                                 showingDeleteConfirmation = true
                             } label: {
@@ -857,6 +878,24 @@ private struct DriveDetailView: View {
                 onBack: { showingRoute = false }
             )
         }
+        .sheet(item: $exportedGPXItem) { item in
+            DetailActivityView(activityItems: [item.url])
+        }
+        .alert("Unable to export GPX", isPresented: $showingExportError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(exportErrorMessage)
+        }
+    }
+
+    private func exportGPX() {
+        do {
+            let url = try GPXExporter.writeTemporaryGPXFile(for: driveWithCurrentRoute)
+            exportedGPXItem = ExportedGPXItem(url: url)
+        } catch {
+            exportErrorMessage = error.localizedDescription
+            showingExportError = true
+        }
     }
 
     private var detailDivider: some View {
@@ -879,6 +918,21 @@ private struct DriveDetailView: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
     }
+}
+
+private struct ExportedGPXItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct DetailActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) { }
 }
 
 private func rowDuration(_ duration: TimeInterval) -> String {

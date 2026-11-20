@@ -15,6 +15,9 @@ struct DriveRouteView: View {
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var routeCoordinates: [DriveRoutePoint]
     @State private var showsRecordingGaps = true
+    @State private var showsSpeedHeatmap = false
+    @State private var highlightedSpeedBand: RouteSpeedBand?
+    @State private var heatmapSegments: [RouteHeatmapSegment] = []
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var showingDeleteConfirmation = false
     @State private var isPreparingShare = false
@@ -27,6 +30,17 @@ struct DriveRouteView: View {
         self.onDeleteRoute = onDeleteRoute
         self.onBack = onBack
         _routeCoordinates = State(initialValue: drive.routeCoordinates)
+        let builtSegments = RouteSpeedHeatmapBuilder.buildSegments(from: drive.routeCoordinates)
+        _heatmapSegments = State(initialValue: builtSegments)
+        _showsSpeedHeatmap = State(initialValue: !builtSegments.isEmpty)
+    }
+
+    private var hasSpeedHeatmapData: Bool {
+        !heatmapSegments.isEmpty
+    }
+
+    private var elevationSummary: ElevationSummary? {
+        DrivingInsightsCalculator.elevationProfile(for: drive)
     }
 
     private var coordinates: [CLLocationCoordinate2D] {
@@ -105,16 +119,52 @@ struct DriveRouteView: View {
                     header
 
                     if routeCoordinates.count >= 2 {
-                        Text(dateChipText)
-                            .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
-                            .tracking(1.1)
-                            .foregroundStyle(SpeedometerStyle.foreground.opacity(0.88))
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                            .veluraGlassCapsule()
-                            .padding(.top, 8)
+                        HStack(spacing: 8) {
+                            Text(dateChipText)
+                                .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+                                .tracking(1.1)
+                                .foregroundStyle(SpeedometerStyle.foreground.opacity(0.88))
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 9)
+                                .veluraGlassCapsule()
+
+                            if hasSpeedHeatmapData {
+                                Button {
+                                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                                        showsSpeedHeatmap.toggle()
+                                        if !showsSpeedHeatmap {
+                                            highlightedSpeedBand = nil
+                                        }
+                                    }
+                                } label: {
+                                    Label(
+                                        showsSpeedHeatmap ? "Heatmap" : "Standard",
+                                        systemImage: showsSpeedHeatmap ? "flame.fill" : "point.topleft.down.to.point.bottomright.curvepath"
+                                    )
+                                    .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(showsSpeedHeatmap ? SpeedometerStyle.accentForeground : SpeedometerStyle.foreground)
+                                    .padding(.horizontal, 13)
+                                    .padding(.vertical, 9)
+                                    .background {
+                                        if showsSpeedHeatmap {
+                                            Capsule().fill(SpeedometerStyle.accent)
+                                        }
+                                    }
+                                    .veluraGlassCapsule(tint: showsSpeedHeatmap ? nil : .clear, interactive: true)
+                                }
+                                .buttonStyle(VeluraGlassPressButtonStyle())
+                                .accessibilityLabel(showsSpeedHeatmap ? "Switch to standard route color" : "Switch to speed heatmap")
+                            }
+                        }
+                        .padding(.top, 8)
+
+                        if showsSpeedHeatmap && hasSpeedHeatmapData {
+                            speedHeatmapLegend
+                                .padding(.top, 8)
+                                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
+                        }
                     }
 
                     Spacer(minLength: geometry.size.height > 600 ? 14 : 4)
@@ -147,6 +197,9 @@ struct DriveRouteView: View {
                 onDeleteRoute()
                 withAnimation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion)) {
                     routeCoordinates.removeAll()
+                    heatmapSegments.removeAll()
+                    showsSpeedHeatmap = false
+                    highlightedSpeedBand = nil
                 }
             }
             Button("Cancel", role: .cancel) { }
@@ -154,8 +207,10 @@ struct DriveRouteView: View {
             Text("The route will be removed from this device. Drive statistics will be kept.")
         }
         .sheet(item: $shareContent) { content in
-            RouteActivityView(activityItems: [content.message, content.mapImage])
+            RouteActivityView(activityItems: content.items)
         }
+        .sensoryFeedback(.selection, trigger: showsSpeedHeatmap)
+        .sensoryFeedback(.selection, trigger: highlightedSpeedBand)
         .alert("Unable to share route", isPresented: $showingShareError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -165,11 +220,22 @@ struct DriveRouteView: View {
 
     private var routeMap: some View {
         Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
-            ForEach(routeSegments.indices, id: \.self) { index in
-                let segment = routeSegments[index]
-                if segment.count > 1 {
-                    MapPolyline(coordinates: segment)
-                        .stroke(SpeedometerStyle.accent, lineWidth: 5)
+            if showsSpeedHeatmap && hasSpeedHeatmapData {
+                ForEach(heatmapSegments) { segment in
+                    let isDimmed = highlightedSpeedBand != nil && highlightedSpeedBand != segment.band
+                    MapPolyline(coordinates: segment.coordinates)
+                        .stroke(
+                            segment.band.color.opacity(isDimmed ? 0.22 : 0.96),
+                            lineWidth: isDimmed ? 3.5 : 5.5
+                        )
+                }
+            } else {
+                ForEach(routeSegments.indices, id: \.self) { index in
+                    let segment = routeSegments[index]
+                    if segment.count > 1 {
+                        MapPolyline(coordinates: segment)
+                            .stroke(SpeedometerStyle.accent, lineWidth: 5)
+                    }
                 }
             }
 
@@ -191,6 +257,43 @@ struct DriveRouteView: View {
             cameraPosition = .region(routeRegion)
         }
         .accessibilityLabel("Recorded drive route map")
+    }
+
+    private var speedHeatmapLegend: some View {
+        HStack(spacing: 6) {
+            ForEach(RouteSpeedBand.allCases) { band in
+                let isSelected = highlightedSpeedBand == band
+                Button {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                        highlightedSpeedBand = isSelected ? nil : band
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(band.color)
+                            .frame(width: 8, height: 8)
+                        Text(band.rangeLabel(usesMiles: usesMiles))
+                            .modifier(AdaptiveFont(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(isSelected ? band.color.opacity(0.22) : .clear, in: Capsule())
+                    .overlay {
+                        if isSelected {
+                            Capsule().stroke(band.color.opacity(0.75), lineWidth: 1)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(band.title), \(band.rangeLabel(usesMiles: usesMiles))")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .veluraGlassCapsule()
     }
 
     private var emptyMapState: some View {
@@ -276,8 +379,18 @@ struct DriveRouteView: View {
     @ViewBuilder
     private var headerShareButton: some View {
         if routeCoordinates.count >= 2 {
-            Button {
-                Task { await prepareShare() }
+            Menu {
+                Button {
+                    Task { await prepareShare() }
+                } label: {
+                    Label("Share route image", systemImage: "photo")
+                }
+
+                Button {
+                    exportGPX()
+                } label: {
+                    Label("Export GPX file", systemImage: "doc.text")
+                }
             } label: {
                 Group {
                     if isPreparingShare {
@@ -294,14 +407,25 @@ struct DriveRouteView: View {
                 .veluraGlassCircle(interactive: true)
                 .glassEffectID("route-header-share", in: routeHeaderGlassNamespace)
             }
-            .buttonStyle(VeluraGlassPressButtonStyle())
             .disabled(isPreparingShare)
-            .accessibilityLabel("Share drive route")
+            .accessibilityLabel("Share or export drive route")
             .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isPreparingShare)
         } else {
             Color.clear
                 .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
+        }
+    }
+
+    private func exportGPX() {
+        var driveSnapshot = drive
+        driveSnapshot.routeCoordinates = routeCoordinates
+        do {
+            let fileURL = try GPXExporter.writeTemporaryGPXFile(for: driveSnapshot)
+            shareContent = RouteShareContent(items: [fileURL])
+        } catch {
+            shareErrorMessage = error.localizedDescription
+            showingShareError = true
         }
     }
 
@@ -323,7 +447,7 @@ struct DriveRouteView: View {
             if !drive.interruptionGaps.isEmpty {
                 messageLines.append("Tracking gaps: \(drive.interruptionGaps.count) · unrecorded sections are not drawn or estimated.")
             }
-            shareContent = RouteShareContent(message: messageLines.joined(separator: "\n"), mapImage: mapImage)
+            shareContent = RouteShareContent(items: [messageLines.joined(separator: "\n"), mapImage])
         } catch {
             shareErrorMessage = "The route map couldn't be prepared. Please try again."
             showingShareError = true
@@ -426,6 +550,10 @@ struct DriveRouteView: View {
                 }
             }
 
+            if let elevation = elevationSummary {
+                elevationProfileCard(elevation)
+            }
+
             if !drive.interruptionGaps.isEmpty {
                 interruptionGapNotice
             }
@@ -453,6 +581,70 @@ struct DriveRouteView: View {
         }
         .padding(18)
         .veluraGlassCard(cornerRadius: 25, stroke: SpeedometerStyle.foreground.opacity(0.14))
+    }
+
+    private func elevationProfileCard(_ elevation: ElevationSummary) -> some View {
+        let elevationUnit = usesMiles ? "ft" : "m"
+        let factor = usesMiles ? 3.28084 : 1.0
+        let gainValue = Int((elevation.gainMeters * factor).rounded())
+        let lossValue = Int((elevation.lossMeters * factor).rounded())
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("ELEVATION", systemImage: "mountain.2.fill")
+                    .modifier(AdaptiveFont(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1)
+                    .foregroundStyle(SpeedometerStyle.secondary)
+                Spacer()
+                Text("+\(gainValue) \(elevationUnit) · -\(lossValue) \(elevationUnit)")
+                    .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(SpeedometerStyle.foreground)
+            }
+
+            Canvas { context, size in
+                let samples = elevation.samples
+                guard samples.count >= 2 else { return }
+                let minAlt = elevation.minMeters
+                let span = max(1, elevation.maxMeters - elevation.minMeters)
+
+                var line = Path()
+                var fill = Path()
+                for (index, sample) in samples.enumerated() {
+                    let x = CGFloat(index) / CGFloat(samples.count - 1) * size.width
+                    let normalized = (sample.altitudeMeters - minAlt) / span
+                    let y = size.height - CGFloat(normalized) * (size.height - 6) - 3
+                    if index == 0 {
+                        line.move(to: CGPoint(x: x, y: y))
+                        fill.move(to: CGPoint(x: x, y: size.height))
+                        fill.addLine(to: CGPoint(x: x, y: y))
+                    } else {
+                        line.addLine(to: CGPoint(x: x, y: y))
+                        fill.addLine(to: CGPoint(x: x, y: y))
+                    }
+                }
+                fill.addLine(to: CGPoint(x: size.width, y: size.height))
+                fill.closeSubpath()
+
+                context.fill(
+                    fill,
+                    with: .linearGradient(
+                        Gradient(colors: [SpeedometerStyle.accent.opacity(0.28), .clear]),
+                        startPoint: CGPoint(x: 0, y: 0),
+                        endPoint: CGPoint(x: 0, y: size.height)
+                    )
+                )
+                context.stroke(
+                    line,
+                    with: .color(SpeedometerStyle.accent),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+                )
+            }
+            .frame(height: 52)
+        }
+        .padding(12)
+        .background(SpeedometerStyle.foreground.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Elevation gain \(gainValue) \(elevationUnit), loss \(lossValue) \(elevationUnit)")
     }
 
     private var interruptionGapNotice: some View {
@@ -536,8 +728,7 @@ private func routeDuration(_ duration: TimeInterval) -> String {
 
 private struct RouteShareContent: Identifiable {
     let id = UUID()
-    let message: String
-    let mapImage: UIImage
+    let items: [Any]
 }
 
 private struct RouteActivityView: UIViewControllerRepresentable {
