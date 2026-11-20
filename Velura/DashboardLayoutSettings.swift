@@ -212,17 +212,21 @@ struct DashboardLayoutSettingsSection: View {
                 .padding(.horizontal, 13)
                 .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 10 : 0)
                 .frame(minHeight: 44)
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+                .background(SpeedometerStyle.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(SpeedometerStyle.accent.opacity(0.24), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(VeluraGlassPressButtonStyle())
 
             Text("Live speed and drive controls are always included.")
                 .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(15)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .veluraGlassCard(cornerRadius: 21)
     }
 
     private func presetButton(_ preset: DashboardLayoutPreset) -> some View {
@@ -239,19 +243,21 @@ struct DashboardLayoutSettingsSection: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .modifier(AdaptiveFont(size: 11, weight: .semibold))
+                        .transition(VeluraMotion.transition(.scale(scale: 0.7).combined(with: .opacity), reduceMotion: reduceMotion))
                 }
             }
             .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
             .padding(.horizontal, 11)
             .frame(maxWidth: .infinity)
             .frame(minHeight: 44)
-            .background(isSelected ? SpeedometerStyle.accent.opacity(0.16) : SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .background(isSelected ? SpeedometerStyle.accent.opacity(0.16) : SpeedometerStyle.foreground.opacity(0.03), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(isSelected ? SpeedometerStyle.accent.opacity(0.55) : SpeedometerStyle.foreground.opacity(0.07), lineWidth: 1)
+                    .stroke(isSelected ? SpeedometerStyle.accent.opacity(0.55) : SpeedometerStyle.foreground.opacity(0.08), lineWidth: 1)
             }
+            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -280,7 +286,9 @@ private struct DashboardLayoutEditor: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(SpeedometerStyle.background)
+        .background {
+            VeluraAmbientBackdrop(intensity: 0.14)
+        }
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: layout.moduleOrder)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: layout.visibleOptionalModules)
         .navigationTitle("Dashboard layout")

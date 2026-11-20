@@ -5,6 +5,8 @@ struct AccelerationTestView: View {
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Namespace private var targetSelectionNamespace
+    @Namespace private var actionsGlassNamespace
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
 
     private var unitConversion: Double { usesMiles ? 0.621371 : 1 }
@@ -23,7 +25,11 @@ struct AccelerationTestView: View {
             let stackedTargets = geometry.size.width < 390 || dynamicTypeSize.isAccessibilitySize
 
             ZStack {
-                SpeedometerStyle.background.ignoresSafeArea()
+                VeluraAmbientBackdrop(
+                    intensity: model.accelerationState == .timing ? 0.55 : (model.accelerationState == .completed ? 0.32 : 0.16),
+                    isWarning: model.accelerationInterruptedForGPS,
+                    isActive: model.accelerationState == .timing || model.accelerationState == .waitingForMovement
+                )
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: compact ? 14 : 18) {
@@ -53,6 +59,9 @@ struct AccelerationTestView: View {
         }
         .preferredColorScheme(appearance.preferredColorScheme)
         .toolbar(.visible, for: .tabBar)
+        .sensoryFeedback(.selection, trigger: model.accelerationPreset)
+        .sensoryFeedback(.impact(weight: .medium), trigger: model.accelerationState == .timing)
+        .sensoryFeedback(.success, trigger: model.isNewAccelerationBest)
     }
 
     private var header: some View {
@@ -81,12 +90,7 @@ struct AccelerationTestView: View {
                     customTargetButton
                 }
                 .padding(5)
-                .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .glassEffect(.regular, in: .rect(cornerRadius: 20))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
-                }
+                .veluraGlassCard(cornerRadius: 20, stroke: SpeedometerStyle.foreground.opacity(0.11))
             } else {
                 HStack(spacing: 4) {
                     presetTargetButton(20)
@@ -95,11 +99,7 @@ struct AccelerationTestView: View {
                     customTargetButton
                 }
                 .padding(5)
-                .background(SpeedometerStyle.foreground.opacity(0.035), in: Capsule())
-                .glassEffect(.regular, in: .capsule)
-                .overlay {
-                    Capsule().stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
-                }
+                .veluraGlassCapsule(stroke: SpeedometerStyle.foreground.opacity(0.11))
             }
         }
         .accessibilityElement(children: .contain)
@@ -141,10 +141,12 @@ struct AccelerationTestView: View {
                             .fill(SpeedometerStyle.accent)
                             .overlay { Capsule().stroke(SpeedometerStyle.foreground.opacity(0.24), lineWidth: 1) }
                             .shadow(color: SpeedometerStyle.accent.opacity(0.3), radius: 10, y: 2)
+                            .matchedGeometryEffect(id: "accelTargetSelection", in: targetSelectionNamespace)
                     }
                 }
+                .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -196,12 +198,7 @@ struct AccelerationTestView: View {
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 12)
-        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 19))
-        .overlay {
-            RoundedRectangle(cornerRadius: 19, style: .continuous)
-                .stroke(SpeedometerStyle.foreground.opacity(0.09), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: 19, stroke: SpeedometerStyle.foreground.opacity(0.09))
         .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
     }
 
@@ -264,12 +261,11 @@ struct AccelerationTestView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 24)
         .frame(maxWidth: .infinity, minHeight: 226)
-        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 26))
-        .overlay {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(SpeedometerStyle.foreground.opacity(0.12), lineWidth: 1)
-        }
+        .veluraGlassCard(
+            cornerRadius: 26,
+            tint: model.accelerationState == .completed && model.isNewAccelerationBest ? SpeedometerStyle.mint.opacity(0.14) : nil,
+            stroke: SpeedometerStyle.foreground.opacity(0.12)
+        )
         .accessibilityElement(children: .contain)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.accelerationState)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isNewAccelerationBest)
@@ -293,12 +289,7 @@ struct AccelerationTestView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, minHeight: 93, alignment: .leading)
-        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(SpeedometerStyle.foreground.opacity(0.1), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.1))
         .accessibilityElement(children: .combine)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isNewAccelerationBest)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.bestAccelerationTime)
@@ -331,41 +322,55 @@ struct AccelerationTestView: View {
     }
 
     private var actionButtons: some View {
-        VStack(spacing: 12) {
-            Button {
-                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                    model.startAccelerationTest()
-                }
-            } label: {
-                Text(model.accelerationPrimaryActionTitle)
-                    .modifier(AdaptiveFont(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.accentForeground)
-                    .contentTransition(.opacity)
+        GlassEffectContainer(spacing: 12) {
+            VStack(spacing: 12) {
+                Button {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                        model.startAccelerationTest()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: model.accelerationPrimaryActionSymbol)
+                            .modifier(AdaptiveFont(size: 16, weight: .bold))
+                            .foregroundStyle(SpeedometerStyle.accent)
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(model.accelerationPrimaryActionTitle)
+                            .modifier(AdaptiveFont(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                            .contentTransition(.opacity)
+                    }
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 60)
-                    .background(SpeedometerStyle.accent, in: Capsule())
-                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.25)).interactive(), in: .capsule)
-                    .overlay { Capsule().stroke(SpeedometerStyle.foreground.opacity(0.32), lineWidth: 1) }
-                    .shadow(color: SpeedometerStyle.accent.opacity(0.34), radius: 15, y: 3)
-            }
-            .buttonStyle(.plain)
-            .disabled(!model.isAccelerationPrimaryActionEnabled)
-            .accessibilityHint("Arms a GPS acceleration run when ready")
-
-            Button {
-                withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
-                    model.resetAccelerationTest()
+                    .contentShape(Capsule())
+                    .veluraGlassCapsule(
+                        tint: SpeedometerStyle.accent.opacity(0.28),
+                        interactive: true,
+                        stroke: SpeedometerStyle.accent.opacity(0.42)
+                    )
+                    .glassEffectID("accel-primary", in: actionsGlassNamespace)
                 }
-            } label: {
-                Text("Reset")
-                    .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 52)
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                .buttonStyle(VeluraGlassPressButtonStyle())
+                .disabled(!model.isAccelerationPrimaryActionEnabled)
+                .opacity(model.isAccelerationPrimaryActionEnabled ? 1 : 0.65)
+                .accessibilityHint("Arms a GPS acceleration run when ready")
+
+                Button {
+                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                        model.resetAccelerationTest()
+                    }
+                } label: {
+                    Text("Reset")
+                        .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 52)
+                        .contentShape(Capsule())
+                        .veluraGlassCapsule(interactive: true)
+                        .glassEffectID("accel-reset", in: actionsGlassNamespace)
+                }
+                .buttonStyle(VeluraGlassPressButtonStyle())
+                .accessibilityLabel("Reset acceleration test")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Reset acceleration test")
         }
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.accelerationState)
     }
@@ -435,8 +440,7 @@ struct AccelerationTestView: View {
             }
         }
         .padding(16)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .veluraGlassCard(cornerRadius: 21)
     }
 
     private func attemptDetails(_ attempt: AccelerationAttempt) -> some View {
@@ -453,16 +457,18 @@ struct AccelerationTestView: View {
 
     private func deleteAttemptButton(_ attempt: AccelerationAttempt, targetKmh: Int) -> some View {
         Button(role: .destructive) {
-            model.deleteAccelerationAttempt(attempt.id)
+            withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) {
+                model.deleteAccelerationAttempt(attempt.id)
+            }
         } label: {
             Image(systemName: "trash")
-                .modifier(AdaptiveFont(size: 11, weight: .semibold))
+                .modifier(AdaptiveFont(size: 12, weight: .semibold))
                 .foregroundStyle(SpeedometerStyle.warning)
                 .frame(width: 44, height: 44)
-                .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.12)).interactive(), in: .circle)
+                .background(SpeedometerStyle.warning.opacity(0.12), in: Circle())
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityLabel("Delete zero to \(displayedTarget(targetKmh)) \(spokenSpeedUnit) attempt")
     }
 

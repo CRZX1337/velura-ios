@@ -28,6 +28,7 @@ struct ContentView: View {
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @AppStorage("speedometer.dashboard.displayScale") private var dashboardDisplayScaleRawValue = DashboardDisplayScale.standard.rawValue
     @AppStorage("speedometer.showsGPSStatus") private var showsGPSStatus = true
+    @AppStorage("speedometer.keepScreenAwake") private var keepScreenAwake = true
     @AppStorage("speedometer.overspeed.enabled") private var overspeedWarningEnabled = false
     @AppStorage("speedometer.overspeed.thresholdKmh") private var overspeedThresholdKmh = 100.0
     @AppStorage("speedometer.firstLaunchSetup.completed") private var hasCompletedFirstLaunchSetup = false
@@ -35,13 +36,14 @@ struct ContentView: View {
     @State private var showsActiveDriveMap = false
     @State private var pendingActiveDriveMapRequest = false
     @State private var selectedTab: MainTab = .speedometer
+    @Namespace private var rangeSelectionNamespace
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var unit: String { usesMiles ? "mph" : "km/h" }
     private var unitConversion: Double { usesMiles ? 0.621371 : 1 }
-    private var displayedSpeed: Double { usesMiles ? model.speedKmh * 0.621371 : model.speedKmh }
+    private var displayedSpeed: Double { usesMiles ? model.displaySpeedKmh * 0.621371 : model.displaySpeedKmh }
     private func displayedSpeed(for speedKmh: Double) -> Double { speedKmh * unitConversion }
     private var rangeMaximum: Double { Double(selectedRange == -1 ? customRange : selectedRange) }
     private var displayedWarningThreshold: Double { usesMiles ? overspeedThresholdKmh * 0.621371 : overspeedThresholdKmh }
@@ -170,7 +172,14 @@ struct ContentView: View {
             }
         }
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isOverspeedWarningActive)
-        .onAppear(perform: syncOverspeedWarning)
+        .sensoryFeedback(.selection, trigger: selectedTab)
+        .onAppear {
+            syncOverspeedWarning()
+            model.configureKeepScreenAwake(keepScreenAwake)
+        }
+        .onChange(of: keepScreenAwake) { _, enabled in
+            model.configureKeepScreenAwake(enabled)
+        }
         .onChange(of: usesMiles) { _, _ in model.refreshLiveActivity() }
         .onChange(of: appearance.theme) { _, _ in model.refreshLiveActivity() }
         .onChange(of: appearance.appearanceMode) { _, _ in model.refreshLiveActivity() }
@@ -231,12 +240,11 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .background(SpeedometerStyle.warning.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.2)), in: .rect(cornerRadius: 18))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(SpeedometerStyle.warning.opacity(0.32), lineWidth: 1)
-        }
+        .veluraGlassCard(
+            cornerRadius: 18,
+            tint: SpeedometerStyle.warning.opacity(0.22),
+            stroke: SpeedometerStyle.warning.opacity(0.36)
+        )
         .accessibilityElement(children: .combine)
     }
 
@@ -268,13 +276,14 @@ struct ContentView: View {
     private var settingsScreen: some View {
         GeometryReader { geometry in
             ZStack {
-                SpeedometerStyle.background.ignoresSafeArea()
+                VeluraAmbientBackdrop(intensity: 0.14, isWarning: false, isActive: model.isSessionActive)
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 18) {
                         pageHeader(title: "Settings", subtitle: "Personalize your speedometer")
                         unitSetting
                         speedWarningSetting
+                        keepScreenAwakeSetting
                         gpsStatusSetting
                         rangePicker
                         dashboardDisplayScaleSetting
@@ -290,6 +299,31 @@ struct ContentView: View {
             }
         }
         .toolbar(.visible, for: .tabBar)
+        .sensoryFeedback(.selection, trigger: appearance.theme)
+        .sensoryFeedback(.selection, trigger: appearance.dialStyle)
+        .sensoryFeedback(.selection, trigger: selectedRange)
+    }
+
+    private var keepScreenAwakeSetting: some View {
+        Toggle(isOn: $keepScreenAwake) {
+            HStack(spacing: 10) {
+                Image(systemName: "sun.max.fill")
+                    .modifier(AdaptiveFont(size: 15, weight: .semibold))
+                    .foregroundStyle(SpeedometerStyle.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Keep screen awake")
+                        .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                    Text("Prevent auto-lock during an active drive")
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                }
+            }
+        }
+        .tint(SpeedometerStyle.accent)
+        .padding(15)
+        .veluraGlassCard(cornerRadius: 21)
+        .accessibilityLabel("Keep screen awake during active drives")
     }
 
     private var dashboardDisplayScaleSetting: some View {
@@ -332,8 +366,7 @@ struct ContentView: View {
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(15)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .veluraGlassCard(cornerRadius: 21)
     }
 
     private var appearanceSection: some View {
@@ -411,8 +444,7 @@ struct ContentView: View {
             }
         }
         .padding(15)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .veluraGlassCard(cornerRadius: 21)
     }
 
     private func themeOption(_ theme: AppearanceTheme) -> some View {
@@ -437,18 +469,19 @@ struct ContentView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .modifier(AdaptiveFont(size: 10, weight: .semibold))
                             .foregroundStyle(theme.accent)
+                            .transition(VeluraMotion.transition(.scale(scale: 0.7).combined(with: .opacity), reduceMotion: reduceMotion))
                     }
                 }
             }
             .padding(7)
             .frame(maxWidth: .infinity)
-            .background(isSelected ? theme.accent.opacity(0.1) : SpeedometerStyle.foreground.opacity(0.02), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(isSelected ? theme.accent.opacity(0.14) : SpeedometerStyle.foreground.opacity(0.03), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? theme.accent.opacity(0.72) : SpeedometerStyle.foreground.opacity(0.08), lineWidth: isSelected ? 1.2 : 1)
+                    .stroke(isSelected ? theme.accent.opacity(0.75) : SpeedometerStyle.foreground.opacity(0.09), lineWidth: isSelected ? 1.3 : 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityLabel("\(theme.title) app theme")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -504,18 +537,19 @@ struct ContentView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .modifier(AdaptiveFont(size: 10, weight: .semibold))
                             .foregroundStyle(SpeedometerStyle.accent)
+                            .transition(VeluraMotion.transition(.scale(scale: 0.7).combined(with: .opacity), reduceMotion: reduceMotion))
                     }
                 }
             }
             .padding(7)
             .frame(maxWidth: .infinity)
-            .background(isSelected ? SpeedometerStyle.accent.opacity(0.1) : SpeedometerStyle.foreground.opacity(0.02), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(isSelected ? SpeedometerStyle.accent.opacity(0.14) : SpeedometerStyle.foreground.opacity(0.03), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? SpeedometerStyle.accent.opacity(0.72) : SpeedometerStyle.foreground.opacity(0.08), lineWidth: isSelected ? 1.2 : 1)
+                    .stroke(isSelected ? SpeedometerStyle.accent.opacity(0.75) : SpeedometerStyle.foreground.opacity(0.09), lineWidth: isSelected ? 1.3 : 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityLabel("\(style.title) speedometer dial")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -726,8 +760,7 @@ struct ContentView: View {
             .accessibilityLabel("Speed unit")
         }
         .padding(15)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .veluraGlassCard(cornerRadius: 21)
     }
 
     private var speedWarningSetting: some View {
@@ -784,8 +817,7 @@ struct ContentView: View {
             .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
         }
         .padding(15)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .veluraGlassCard(cornerRadius: 21)
     }
 
     private var thresholdValue: some View {
@@ -814,49 +846,8 @@ struct ContentView: View {
         }
         .tint(SpeedometerStyle.accent)
         .padding(15)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .veluraGlassCard(cornerRadius: 21)
         .accessibilityLabel("Show GPS signal status")
-    }
-
-    private var gpsStatus: some View {
-        HStack(spacing: 11) {
-            ZStack {
-                Circle()
-                    .fill(model.isGPSReadingReliable ? SpeedometerStyle.mint.opacity(0.16) : SpeedometerStyle.foreground.opacity(0.07))
-                    .frame(width: 34, height: 34)
-                Image(systemName: model.isGPSReadingReliable ? "location.fill" : "location")
-                    .modifier(AdaptiveFont(size: 14, weight: .semibold))
-                    .foregroundStyle(model.isGPSReadingReliable ? SpeedometerStyle.mint : SpeedometerStyle.secondary)
-                    .symbolEffect(.pulse, options: .repeating, isActive: model.isSessionActive && !model.isGPSReadingReliable && !reduceMotion)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(model.gpsStatusTitle)
-                    .modifier(AdaptiveFont(size: 11, weight: .bold, design: .rounded))
-                    .tracking(0.8)
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                Text(model.gpsStatusDetail)
-                    .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-
-            Spacer(minLength: 6)
-
-            Circle()
-                .fill(model.isGPSReadingReliable ? SpeedometerStyle.mint : Color.orange.opacity(0.86))
-                .frame(width: 7, height: 7)
-                .shadow(color: (model.isGPSReadingReliable ? SpeedometerStyle.mint : Color.orange).opacity(0.55), radius: 6)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
-        .accessibilityElement(children: .combine)
-        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isGPSReadingReliable)
-        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
     }
 
     private var dialRangeHeading: some View {
@@ -892,20 +883,22 @@ struct ContentView: View {
             }
 
             if dynamicTypeSize.isAccessibilitySize {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                     rangeButton(20)
                     rangeButton(50)
                     rangeButton(100)
                     customRangeButton
                 }
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     rangeButton(20)
                     rangeButton(50)
                     rangeButton(100)
                     customRangeButton
                 }
             }
+            .padding(4)
+            .background(SpeedometerStyle.foreground.opacity(0.04), in: RoundedRectangle(cornerRadius: dynamicTypeSize.isAccessibilitySize ? 18 : 26, style: .continuous))
 
             if selectedRange == -1 {
                 VStack(spacing: 3) {
@@ -946,22 +939,32 @@ struct ContentView: View {
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 13)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 21))
+        .veluraGlassCard(cornerRadius: 21)
+        .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: selectedRange)
     }
 
     private var customRangeButton: some View {
-        Button {
+        let isSelected = selectedRange == -1
+        return Button {
             withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { selectedRange = -1 }
         } label: {
             Text("Custom")
                 .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(selectedRange == -1 ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
+                .foregroundStyle(isSelected ? SpeedometerStyle.accentForeground : SpeedometerStyle.secondary)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 44)
-                .glassEffect(.regular.tint(selectedRange == -1 ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
+                .background {
+                    if isSelected {
+                        Capsule()
+                            .fill(SpeedometerStyle.accent)
+                            .shadow(color: SpeedometerStyle.accent.opacity(0.28), radius: 8, y: 2)
+                            .matchedGeometryEffect(id: "settingsRangeSelection", in: rangeSelectionNamespace)
+                    }
+                }
+                .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func rangeButton(_ value: Int) -> some View {
@@ -971,13 +974,22 @@ struct ContentView: View {
         } label: {
             Text("0–\(value)")
                 .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
+                .foregroundStyle(isSelected ? SpeedometerStyle.accentForeground : SpeedometerStyle.secondary)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 44)
-                .glassEffect(.regular.tint(isSelected ? SpeedometerStyle.accent.opacity(0.28) : .clear).interactive(), in: .capsule)
+                .background {
+                    if isSelected {
+                        Capsule()
+                            .fill(SpeedometerStyle.accent)
+                            .shadow(color: SpeedometerStyle.accent.opacity(0.28), radius: 8, y: 2)
+                            .matchedGeometryEffect(id: "settingsRangeSelection", in: rangeSelectionNamespace)
+                    }
+                }
+                .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityLabel("Set dial range from zero to \(value) \(unit)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
 }
@@ -1157,13 +1169,16 @@ struct SpeedometerGauge: View {
                     .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
                     .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
 
-                let indicatorAngle = (150 + 240 * progress) * .pi / 180
-                Circle()
-                    .fill(gaugeColor)
-                    .frame(width: dialStyle == .sport ? 12 : 10, height: dialStyle == .sport ? 12 : 10)
-                    .shadow(color: gaugeColor.opacity(0.75), radius: 8)
-                    .position(x: center.x + cos(indicatorAngle) * radius, y: center.y + sin(indicatorAngle) * radius)
-                    .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+                GaugeIndicatorDot(
+                    progress: progress,
+                    radius: radius,
+                    color: gaugeColor,
+                    dotSize: dialStyle == .sport ? 12 : 10
+                )
+                .frame(width: diameter, height: diameter)
+                .position(center)
+                .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
+                .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
             }
 
             ForEach(0..<dialStyle.labelCount, id: \.self) { index in
@@ -1237,11 +1252,8 @@ struct SpeedometerGauge: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(gaugeColor.opacity(0.3), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: 26, tint: isOverspeed ? SpeedometerStyle.warning.opacity(0.14) : nil, stroke: gaugeColor.opacity(0.28))
+        .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: speed)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
     }
@@ -1289,19 +1301,47 @@ struct SpeedometerGauge: View {
         }
         .padding(22)
         .frame(maxWidth: .infinity)
-        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(gaugeColor.opacity(0.3), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: 26, tint: isOverspeed ? SpeedometerStyle.warning.opacity(0.14) : nil, stroke: gaugeColor.opacity(0.28))
+        .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: speed)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
+    }
+}
+
+private struct GaugeIndicatorDot: View, Animatable {
+    var progress: Double
+    let radius: CGFloat
+    let color: Color
+    let dotSize: CGFloat
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            let bounded = min(max(progress, 0), 1)
+            let angle = (150 + 240 * bounded) * .pi / 180
+            Circle()
+                .fill(color)
+                .frame(width: dotSize, height: dotSize)
+                .shadow(color: color.opacity(0.75), radius: 8)
+                .position(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius)
+        }
+        .accessibilityHidden(true)
     }
 }
 
 private struct GaugeArc: Shape {
     var progress: Double
     var radiusFraction: CGFloat = 0.43
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     func path(in rect: CGRect) -> Path {
         let center = CGPoint(x: rect.midX, y: rect.midY)
@@ -1318,12 +1358,17 @@ private struct GaugeArc: Shape {
     }
 }
 
-private struct SegmentedGaugeRing: View {
-    let progress: Double
+private struct SegmentedGaugeRing: View, Animatable {
+    var progress: Double
     let activeColor: Color
     let inactiveColor: Color
     let segmentCount: Int
     let lineWidth: CGFloat
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     var body: some View {
         Canvas { context, size in
@@ -1332,6 +1377,7 @@ private struct SegmentedGaugeRing: View {
             let segmentStep = 360.0 / Double(segmentCount)
             let segmentSweep = segmentStep * 0.66
             let boundedProgress = min(max(progress, 0), 1)
+            let exactActiveCount = boundedProgress * Double(segmentCount)
 
             for index in 0..<segmentCount {
                 let start = -90 + segmentStep * Double(index)
@@ -1343,7 +1389,8 @@ private struct SegmentedGaugeRing: View {
                     endAngle: .degrees(start + segmentSweep),
                     clockwise: false
                 )
-                let color = Double(index) / Double(segmentCount) < boundedProgress ? activeColor : inactiveColor
+                let fillAmount = min(max(exactActiveCount - Double(index), 0), 1)
+                let color = fillAmount > 0 ? activeColor.opacity(0.28 + 0.72 * fillAmount) : inactiveColor
                 context.stroke(segment, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             }
         }
@@ -1351,13 +1398,18 @@ private struct SegmentedGaugeRing: View {
     }
 }
 
-private struct SegmentedGaugeArc: View {
-    let progress: Double
+private struct SegmentedGaugeArc: View, Animatable {
+    var progress: Double
     let activeColor: Color
     let inactiveColor: Color
     let segmentCount: Int
     let radiusFraction: CGFloat
     let lineWidth: CGFloat
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     var body: some View {
         Canvas { context, size in
@@ -1365,6 +1417,8 @@ private struct SegmentedGaugeArc: View {
             let radius = min(size.width, size.height) * radiusFraction
             let segmentStep = 240.0 / Double(segmentCount)
             let segmentSweep = segmentStep * 0.68
+            let boundedProgress = min(max(progress, 0), 1)
+            let exactActiveCount = boundedProgress * Double(segmentCount)
 
             for index in 0..<segmentCount {
                 let start = 150 + segmentStep * Double(index)
@@ -1376,7 +1430,8 @@ private struct SegmentedGaugeArc: View {
                     endAngle: .degrees(start + segmentSweep),
                     clockwise: false
                 )
-                let color = Double(index) / Double(segmentCount) < progress ? activeColor : inactiveColor
+                let fillAmount = min(max(exactActiveCount - Double(index), 0), 1)
+                let color = fillAmount > 0 ? activeColor.opacity(0.28 + 0.72 * fillAmount) : inactiveColor
                 context.stroke(segment, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             }
         }

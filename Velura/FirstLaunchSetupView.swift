@@ -63,20 +63,7 @@ struct FirstLaunchSetupView: View {
 
     var body: some View {
         ZStack {
-            background.ignoresSafeArea()
-            LinearGradient(
-                colors: [cyan.opacity(0.14), background.opacity(0.65), background],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            Circle()
-                .fill(cyan.opacity(0.09))
-                .frame(width: 270, height: 270)
-                .blur(radius: 90)
-                .offset(x: 150, y: -360)
-                .accessibilityHidden(true)
+            VeluraAmbientBackdrop(intensity: 0.22, isWarning: needsSettings, isActive: isLocationAuthorized)
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 8) {
@@ -199,12 +186,7 @@ struct FirstLaunchSetupView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 23))
-        .overlay {
-            RoundedRectangle(cornerRadius: 23, style: .continuous)
-                .stroke(foreground.opacity(0.075), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: 23, stroke: foreground.opacity(0.075))
         .accessibilityElement(children: .combine)
     }
 
@@ -249,44 +231,42 @@ struct FirstLaunchSetupView: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(minHeight: 44)
 
-            Button(action: handlePrimaryAction) {
-                Text(primaryActionTitle)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(appearance.accentForeground)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(
-                        LinearGradient(colors: [Color(red: 0.31, green: 0.91, blue: 1), cyan], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        in: Capsule()
-                    )
-                    .shadow(color: cyan.opacity(0.25), radius: 14, y: 4)
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint(primaryActionHint)
+            VStack(spacing: 10) {
+                Button(action: handlePrimaryAction) {
+                    Text(primaryActionTitle)
+                        .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(appearance.accentForeground)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                        .background(
+                            LinearGradient(colors: [Color(red: 0.31, green: 0.91, blue: 1), cyan], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            in: Capsule()
+                        )
+                        .shadow(color: cyan.opacity(0.25), radius: 14, y: 4)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(VeluraGlassPressButtonStyle())
+                .accessibilityHint(primaryActionHint)
 
-            Button(action: onContinue) {
-                Text("Continue without location")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(secondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(foreground.opacity(0.025), in: Capsule())
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    .overlay {
-                        Capsule().stroke(foreground.opacity(0.08), lineWidth: 1)
-                    }
+                Button(action: onContinue) {
+                    Text("Continue without location")
+                        .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 46)
+                        .background(foreground.opacity(0.06), in: Capsule())
+                        .overlay {
+                            Capsule().stroke(foreground.opacity(0.1), lineWidth: 1)
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(VeluraGlassPressButtonStyle())
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .background(foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 25))
-        .overlay {
-            RoundedRectangle(cornerRadius: 25, style: .continuous)
-                .stroke(cyan.opacity(0.13), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: 25, stroke: cyan.opacity(0.14))
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
         .accessibilityElement(children: .contain)
     }

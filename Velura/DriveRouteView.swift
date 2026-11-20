@@ -10,6 +10,7 @@ struct DriveRouteView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Namespace private var routeHeaderGlassNamespace
     @ObservedObject private var appearance = AppAppearance.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var routeCoordinates: [DriveRoutePoint]
@@ -112,7 +113,7 @@ struct DriveRouteView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 10)
-                            .glassEffect(.regular, in: .capsule)
+                            .veluraGlassCapsule()
                             .padding(.top, 8)
                     }
 
@@ -194,7 +195,7 @@ struct DriveRouteView: View {
 
     private var emptyMapState: some View {
         ZStack {
-            SpeedometerStyle.background
+            VeluraAmbientBackdrop(intensity: 0.14)
             Circle()
                 .stroke(SpeedometerStyle.foreground.opacity(0.035), lineWidth: 1)
                 .frame(width: 300, height: 300)
@@ -216,36 +217,41 @@ struct DriveRouteView: View {
                     .frame(maxWidth: 270)
             }
             .padding(24)
-            .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+            .veluraGlassCard(cornerRadius: 24)
         }
         .ignoresSafeArea()
     }
 
     @ViewBuilder
     private var header: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 8) {
+        GlassEffectContainer(spacing: 10) {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        backButton
+                        Spacer()
+                        headerShareButton
+                    }
+                    Text("Drive route")
+                        .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
                 HStack {
                     backButton
                     Spacer()
+                    Text("Drive route")
+                        .modifier(AdaptiveFont(size: 18, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.foreground)
+                        .lineLimit(1)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .veluraGlassCapsule()
+                        .glassEffectID("route-header-title", in: routeHeaderGlassNamespace)
+                    Spacer()
                     headerShareButton
                 }
-                Text("Drive route")
-                    .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        } else {
-            HStack {
-                backButton
-                Spacer()
-                Text("Drive route")
-                    .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                    .lineLimit(1)
-                Spacer()
-                headerShareButton
             }
         }
     }
@@ -259,9 +265,11 @@ struct DriveRouteView: View {
                 .modifier(AdaptiveFont(size: 16, weight: .semibold))
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
+                .veluraGlassCircle(interactive: true)
+                .glassEffectID("route-header-back", in: routeHeaderGlassNamespace)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityLabel("Back to drive details")
     }
 
@@ -282,9 +290,11 @@ struct DriveRouteView: View {
                     }
                 }
                 .frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
+                .veluraGlassCircle(interactive: true)
+                .glassEffectID("route-header-share", in: routeHeaderGlassNamespace)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(VeluraGlassPressButtonStyle())
             .disabled(isPreparingShare)
             .accessibilityLabel("Share drive route")
             .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isPreparingShare)
@@ -430,15 +440,19 @@ struct DriveRouteView: View {
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 44)
                         .padding(.vertical, 8)
-                        .glassEffect(.regular.tint(SpeedometerStyle.warning.opacity(0.12)), in: .capsule)
+                        .background(SpeedometerStyle.warning.opacity(0.14), in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(SpeedometerStyle.warning.opacity(0.3), lineWidth: 1)
+                        }
+                        .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(VeluraGlassPressButtonStyle())
                 .accessibilityHint("Deletes the route only; drive statistics are kept")
             }
         }
         .padding(18)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 25))
+        .veluraGlassCard(cornerRadius: 25, stroke: SpeedometerStyle.foreground.opacity(0.14))
     }
 
     private var interruptionGapNotice: some View {

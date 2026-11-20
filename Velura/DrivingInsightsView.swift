@@ -28,6 +28,8 @@ struct DrivingInsightsView: View {
     @StateObject private var store = DriveHistoryStore.shared
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @State private var selectedPeriod: InsightsPeriod = .week
+    @State private var hasAppeared = false
+    @Namespace private var periodSelectionNamespace
 
     private var distanceUnit: String { usesMiles ? "mi" : "km" }
     private var speedUnit: String { usesMiles ? "mph" : "km/h" }
@@ -143,7 +145,7 @@ struct DrivingInsightsView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                SpeedometerStyle.background.ignoresSafeArea()
+                VeluraAmbientBackdrop(intensity: 0.16)
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
@@ -176,8 +178,14 @@ struct DrivingInsightsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .tabBar)
         .preferredColorScheme(appearance.preferredColorScheme)
+        .sensoryFeedback(.selection, trigger: selectedPeriod)
         .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: selectedPeriod)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: store.drives.count)
+        .onAppear {
+            withAnimation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion)) {
+                hasAppeared = true
+            }
+        }
     }
 
     @ViewBuilder
@@ -218,9 +226,10 @@ struct DrivingInsightsView: View {
                 .modifier(AdaptiveFont(size: 15, weight: .semibold))
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
+                .veluraGlassCircle(interactive: true)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityLabel("Back to drives")
     }
 
@@ -253,19 +262,17 @@ struct DrivingInsightsView: View {
                                         Capsule().stroke(SpeedometerStyle.foreground.opacity(0.2), lineWidth: 1)
                                     }
                                     .shadow(color: SpeedometerStyle.accent.opacity(0.24), radius: 7, y: 2)
+                                    .matchedGeometryEffect(id: "insightsPeriodSelection", in: periodSelectionNamespace)
                             }
                         }
+                        .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(VeluraGlassPressButtonStyle())
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .padding(4)
-        .background(SpeedometerStyle.foreground.opacity(0.045), in: Capsule())
-        .glassEffect(.regular, in: .capsule)
-        .overlay {
-            Capsule().stroke(SpeedometerStyle.foreground.opacity(0.09), lineWidth: 1)
-        }
+        .veluraGlassCapsule(stroke: SpeedometerStyle.foreground.opacity(0.09))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Insights period")
     }
@@ -318,7 +325,7 @@ struct DrivingInsightsView: View {
                         HStack(alignment: .bottom, spacing: chartBucketSpacing) {
                             ForEach(chartBuckets) { bucket in
                                 let value = bucket.distanceKm * conversion
-                                let height = value > 0
+                                let targetHeight = value > 0
                                     ? max(4, geometry.size.height * CGFloat(value / chartAxisMaximum))
                                     : 0
                                 RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -329,9 +336,16 @@ struct DrivingInsightsView: View {
                                         startPoint: .top,
                                         endPoint: .bottom
                                     ))
-                                    .frame(height: height)
+                                    .frame(height: hasAppeared || reduceMotion ? targetHeight : 0)
                                     .frame(maxWidth: .infinity)
                                     .shadow(color: bucket.isCurrent ? SpeedometerStyle.accent.opacity(0.18) : .clear, radius: 8, y: 1)
+                                    .animation(
+                                        VeluraMotion.animation(
+                                            VeluraMotion.content.delay(Double(bucket.index) * 0.03),
+                                            reduceMotion: reduceMotion
+                                        ),
+                                        value: hasAppeared
+                                    )
                             }
                         }
                         .padding(.horizontal, 13)
@@ -367,7 +381,7 @@ struct DrivingInsightsView: View {
                             if bucket.isCurrent {
                                 Capsule()
                                     .fill(SpeedometerStyle.foreground.opacity(0.085))
-                                    .glassEffect(.regular, in: .capsule)
+                                    .veluraGlassCapsule()
                             }
                         }
                         .accessibilityElement(children: .ignore)
@@ -406,12 +420,7 @@ struct DrivingInsightsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 20)
-        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.11))
     }
 
     private var metricDivider: some View {
@@ -459,8 +468,7 @@ struct DrivingInsightsView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .padding(.vertical, 36)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .veluraGlassCard(cornerRadius: 24)
     }
 }
 

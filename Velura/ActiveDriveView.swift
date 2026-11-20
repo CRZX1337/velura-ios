@@ -6,6 +6,8 @@ struct ActiveDriveView: View {
     @ObservedObject var model: SpeedometerModel
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Namespace private var mapHeaderGlassNamespace
     @State private var cameraPosition: MapCameraPosition = .userLocation(followsHeading: true, fallback: .automatic)
     @State private var showingEndConfirmation = false
 
@@ -14,6 +16,7 @@ struct ActiveDriveView: View {
     private var speedConversion: Double { usesMiles ? 0.621371 : 1 }
     private var distanceUnit: String { usesMiles ? "mi" : "km" }
     private var speedUnit: String { usesMiles ? "mph" : "km/h" }
+    private var displayedSpeed: Int { Int((model.displaySpeedKmh * speedConversion).rounded()) }
 
     private var routeSegments: [[CLLocationCoordinate2D]] {
         var segments: [[CLLocationCoordinate2D]] = []
@@ -120,50 +123,61 @@ struct ActiveDriveView: View {
     }
 
     private var header: some View {
-        HStack {
-            Button(action: onClose) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(SpeedometerStyle.foreground)
-                    .frame(width: 54, height: 54)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().stroke(SpeedometerStyle.foreground.opacity(0.18), lineWidth: 1))
-            }
-            .accessibilityLabel("Close active drive")
-
-            Spacer(minLength: 8)
-            Text("Drive")
-                .font(.system(size: 19, weight: .semibold, design: .rounded))
-                .foregroundStyle(SpeedometerStyle.foreground)
-            Spacer(minLength: 8)
-
-            HStack(spacing: 8) {
-                Button(action: fitRoute) {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 16, weight: .semibold))
+        GlassEffectContainer(spacing: 10) {
+            HStack {
+                Button(action: onClose) {
+                    Image(systemName: "chevron.left")
+                        .modifier(AdaptiveFont(size: 17, weight: .semibold))
                         .foregroundStyle(SpeedometerStyle.foreground)
                         .frame(width: 48, height: 48)
-                        .background(.ultraThinMaterial, in: Circle())
-                        .overlay(Circle().stroke(SpeedometerStyle.foreground.opacity(0.18), lineWidth: 1))
+                        .contentShape(Circle())
+                        .veluraGlassCircle(interactive: true)
+                        .glassEffectID("active-drive-back", in: mapHeaderGlassNamespace)
                 }
-                .buttonStyle(.plain)
-                .disabled(model.routeCoordinates.isEmpty)
-                .accessibilityLabel("Fit recorded route")
-                .accessibilityHint("Fits the map to the latest recorded route")
+                .buttonStyle(VeluraGlassPressButtonStyle())
+                .accessibilityLabel("Close active drive")
 
-                Menu {
-                    Button("End drive", systemImage: "stop.fill", role: .destructive) {
-                        showingEndConfirmation = true
+                Spacer(minLength: 8)
+                Text("Drive")
+                    .modifier(AdaptiveFont(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SpeedometerStyle.foreground)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .veluraGlassCapsule()
+                    .glassEffectID("active-drive-title", in: mapHeaderGlassNamespace)
+                Spacer(minLength: 8)
+
+                HStack(spacing: 8) {
+                    Button(action: fitRoute) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .modifier(AdaptiveFont(size: 15, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                            .frame(width: 48, height: 48)
+                            .contentShape(Circle())
+                            .veluraGlassCircle(interactive: true)
+                            .glassEffectID("active-drive-fit", in: mapHeaderGlassNamespace)
                     }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(SpeedometerStyle.foreground)
-                        .frame(width: 54, height: 54)
-                        .background(.ultraThinMaterial, in: Circle())
-                        .overlay(Circle().stroke(SpeedometerStyle.foreground.opacity(0.18), lineWidth: 1))
+                    .buttonStyle(VeluraGlassPressButtonStyle())
+                    .disabled(model.routeCoordinates.isEmpty)
+                    .opacity(model.routeCoordinates.isEmpty ? 0.5 : 1)
+                    .accessibilityLabel("Fit recorded route")
+                    .accessibilityHint("Fits the map to the latest recorded route")
+
+                    Menu {
+                        Button("End drive", systemImage: "stop.fill", role: .destructive) {
+                            showingEndConfirmation = true
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .modifier(AdaptiveFont(size: 17, weight: .semibold))
+                            .foregroundStyle(SpeedometerStyle.foreground)
+                            .frame(width: 48, height: 48)
+                            .contentShape(Circle())
+                            .veluraGlassCircle(interactive: true)
+                            .glassEffectID("active-drive-menu", in: mapHeaderGlassNamespace)
+                    }
+                    .accessibilityLabel("More drive options")
                 }
-                .accessibilityLabel("More drive options")
             }
         }
     }
@@ -171,95 +185,107 @@ struct ActiveDriveView: View {
     private var summaryCard: some View {
         VStack(spacing: 13) {
             Capsule()
-                .fill(SpeedometerStyle.secondary.opacity(0.52))
-                .frame(width: 48, height: 5)
+                .fill(SpeedometerStyle.secondary.opacity(0.45))
+                .frame(width: 44, height: 4.5)
                 .padding(.bottom, 1)
 
             HStack(spacing: 8) {
                 Text(model.isSessionActive ? "DRIVE ACTIVE" : "DRIVE PAUSED")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 11, weight: .semibold, design: .rounded))
                     .tracking(1)
                     .foregroundStyle(SpeedometerStyle.secondary)
                 Circle()
                     .fill(model.isSessionActive ? SpeedometerStyle.mint : SpeedometerStyle.warning)
-                    .frame(width: 9, height: 9)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: (model.isSessionActive ? SpeedometerStyle.mint : SpeedometerStyle.warning).opacity(0.5), radius: 4)
                 Spacer()
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(Int((model.speedKmh * speedConversion).rounded()))")
-                    .font(.system(size: 48, weight: .bold, design: .rounded))
-                    .monospacedDigit()
+                Text("\(displayedSpeed)")
+                    .modifier(AdaptiveFont(size: 46, weight: .bold, design: .rounded).monospacedDigit())
                     .contentTransition(.numericText())
                     .foregroundStyle(SpeedometerStyle.foreground)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
                 Text(speedUnit)
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Current speed, \(Int((model.speedKmh * speedConversion).rounded())) \(speedUnit)")
+            .accessibilityLabel("Current speed, \(displayedSpeed) \(speedUnit)")
+            .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: displayedSpeed)
 
             Rectangle()
-                .fill(SpeedometerStyle.secondary.opacity(0.25))
+                .fill(SpeedometerStyle.foreground.opacity(0.14))
                 .frame(height: 1)
 
-            HStack(spacing: 0) {
-                summaryMetric(title: "DISTANCE", value: String(format: "%.1f %@", model.distanceKm * (usesMiles ? 0.621371 : 1), distanceUnit))
-                metricDivider
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    summaryMetric(title: "TIME", value: formattedDuration(model.elapsedTime(at: context.date)))
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 10) {
+                        summaryMetric(title: "DISTANCE", value: String(format: "%.1f %@", model.distanceKm * speedConversion, distanceUnit))
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            summaryMetric(title: "TIME", value: formattedDuration(model.elapsedTime(at: context.date)))
+                        }
+                        summaryMetric(title: "TOP SPEED", value: "\(Int((model.topSpeedKmh * speedConversion).rounded())) \(speedUnit)")
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        summaryMetric(title: "DISTANCE", value: String(format: "%.1f %@", model.distanceKm * speedConversion, distanceUnit))
+                        metricDivider
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            summaryMetric(title: "TIME", value: formattedDuration(model.elapsedTime(at: context.date)))
+                        }
+                        metricDivider
+                        summaryMetric(title: "TOP SPEED", value: "\(Int((model.topSpeedKmh * speedConversion).rounded())) \(speedUnit)")
+                    }
                 }
-                metricDivider
-                summaryMetric(title: "TOP SPEED", value: "\(Int((model.topSpeedKmh * speedConversion).rounded())) \(speedUnit)")
             }
 
             Button {
                 showingEndConfirmation = true
             } label: {
                 Label("End drive", systemImage: "stop.fill")
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.warning)
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: 58)
-                    .background(SpeedometerStyle.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .frame(minHeight: 54)
+                    .background(SpeedometerStyle.warning.opacity(0.14), in: Capsule())
                     .overlay {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(SpeedometerStyle.accent.opacity(0.18), lineWidth: 1)
+                        Capsule()
+                            .stroke(SpeedometerStyle.warning.opacity(0.32), lineWidth: 1)
                     }
+                    .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(VeluraGlassPressButtonStyle())
             .accessibilityHint("Ends location tracking and saves the recorded drive summary")
         }
         .padding(.horizontal, 17)
         .padding(.top, 11)
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity)
-        .background(SpeedometerStyle.background.opacity(0.82), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(SpeedometerStyle.foreground.opacity(0.17), lineWidth: 1)
-        }
-        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+        .veluraGlassCard(cornerRadius: 28, stroke: SpeedometerStyle.foreground.opacity(0.16))
+        .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isSessionActive)
     }
 
     private var metricDivider: some View {
         Rectangle()
-            .fill(SpeedometerStyle.secondary.opacity(0.24))
-            .frame(width: 1, height: 48)
+            .fill(SpeedometerStyle.foreground.opacity(0.14))
+            .frame(width: 1, height: 44)
             .padding(.horizontal, 10)
     }
 
     private func summaryMetric(title: String, value: String) -> some View {
         VStack(spacing: 5) {
             Text(value)
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .monospacedDigit()
+                .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(SpeedometerStyle.foreground)
+                .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(title)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .modifier(AdaptiveFont(size: 10, weight: .medium, design: .rounded))
                 .tracking(0.65)
                 .foregroundStyle(SpeedometerStyle.secondary)
                 .lineLimit(1)

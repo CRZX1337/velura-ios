@@ -27,6 +27,7 @@ struct DriveHistoryView: View {
     @State private var showingClearConfirmation = false
     @State private var isSearchPresented = false
     @State private var showingInsights = false
+    @Namespace private var filterSelectionNamespace
     @AppStorage("speedometer.usesMiles") private var usesMiles = false
 
     private var distanceUnit: String { usesMiles ? "mi" : "km" }
@@ -115,7 +116,7 @@ struct DriveHistoryView: View {
         GeometryReader { geometry in
             let compactLayout = geometry.size.width < 380 || dynamicTypeSize.isAccessibilitySize
             ZStack {
-                SpeedometerStyle.background.ignoresSafeArea()
+                VeluraAmbientBackdrop(intensity: 0.14)
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
@@ -191,6 +192,7 @@ struct DriveHistoryView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .tabBar)
         .preferredColorScheme(appearance.preferredColorScheme)
+        .sensoryFeedback(.selection, trigger: filter)
         .navigationDestination(isPresented: $showingInsights) {
             DrivingInsightsView()
         }
@@ -265,7 +267,7 @@ struct DriveHistoryView: View {
                 .modifier(AdaptiveFont(size: 15, weight: .semibold))
                 .foregroundStyle(SpeedometerStyle.foreground)
                 .frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .veluraGlassCircle(interactive: true)
         }
         .accessibilityLabel("Search, insights or history actions")
     }
@@ -300,8 +302,7 @@ struct DriveHistoryView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(minHeight: 44)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .veluraGlassCard(cornerRadius: 18)
     }
 
     private var noMatchesState: some View {
@@ -324,15 +325,15 @@ struct DriveHistoryView: View {
                     .foregroundStyle(SpeedometerStyle.accent)
                     .padding(.horizontal, 15)
                     .padding(.vertical, 10)
-                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.14)).interactive(), in: .capsule)
+                    .background(SpeedometerStyle.accent.opacity(0.14), in: Capsule())
+                    .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(VeluraGlassPressButtonStyle())
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 16)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .veluraGlassCard(cornerRadius: 24)
     }
 
     private var filterEmptyState: some View {
@@ -355,15 +356,15 @@ struct DriveHistoryView: View {
                     .foregroundStyle(SpeedometerStyle.accent)
                     .padding(.horizontal, 15)
                     .padding(.vertical, 10)
-                    .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.14)).interactive(), in: .capsule)
+                    .background(SpeedometerStyle.accent.opacity(0.14), in: Capsule())
+                    .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(VeluraGlassPressButtonStyle())
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 16)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .veluraGlassCard(cornerRadius: 24)
     }
 
     private func monthSummary(compact: Bool) -> some View {
@@ -399,12 +400,7 @@ struct DriveHistoryView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 17)
-        .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(SpeedometerStyle.foreground.opacity(0.11), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.11))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("This month’s driving summary")
     }
@@ -448,14 +444,10 @@ struct DriveHistoryView: View {
             }
         }
         .padding(4)
-        .background(SpeedometerStyle.foreground.opacity(0.04), in: RoundedRectangle(cornerRadius: compact ? 18 : 28, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: compact ? 18 : 28))
-        .overlay {
-            RoundedRectangle(cornerRadius: compact ? 18 : 28, style: .continuous)
-                .stroke(SpeedometerStyle.foreground.opacity(0.09), lineWidth: 1)
-        }
+        .veluraGlassCard(cornerRadius: compact ? 18 : 28, stroke: SpeedometerStyle.foreground.opacity(0.09))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Drive history date filter")
+        .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: filter)
     }
 
     private func filterButton(_ option: HistoryFilter) -> some View {
@@ -465,22 +457,23 @@ struct DriveHistoryView: View {
         } label: {
             Text(option.rawValue)
                 .modifier(AdaptiveFont(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(isSelected ? SpeedometerStyle.foreground : SpeedometerStyle.secondary)
+                .foregroundStyle(isSelected ? SpeedometerStyle.accentForeground : SpeedometerStyle.secondary)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 44)
                 .background {
                     if isSelected {
                         Capsule()
-                            .fill(SpeedometerStyle.accent.opacity(0.2))
-                            .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.35)), in: .capsule)
+                            .fill(SpeedometerStyle.accent)
                             .overlay {
-                                Capsule().stroke(SpeedometerStyle.accent.opacity(0.7), lineWidth: 1)
+                                Capsule().stroke(SpeedometerStyle.foreground.opacity(0.24), lineWidth: 1)
                             }
-                            .shadow(color: SpeedometerStyle.accent.opacity(0.3), radius: 8, y: 2)
+                            .shadow(color: SpeedometerStyle.accent.opacity(0.28), radius: 8, y: 2)
+                            .matchedGeometryEffect(id: "historyFilterSelection", in: filterSelectionNamespace)
                     }
                 }
+                .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -499,8 +492,7 @@ struct DriveHistoryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 42)
-        .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .veluraGlassCard(cornerRadius: 24)
         .padding(.top, 3)
     }
 }
@@ -561,15 +553,10 @@ private struct DriveHistoryRow: View {
             }
             .padding(.horizontal, 11)
             .padding(.vertical, compact ? 11 : 7)
-            .background(SpeedometerStyle.foreground.opacity(0.035), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .glassEffect(.regular, in: .rect(cornerRadius: 22))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(SpeedometerStyle.accent.opacity(0.16), lineWidth: 1)
-            }
+            .veluraGlassCard(cornerRadius: 22, interactive: true, stroke: SpeedometerStyle.accent.opacity(0.16))
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(VeluraGlassPressButtonStyle())
         .accessibilityLabel("Drive at \(drive.date.formatted(date: .omitted, time: .shortened)), \(String(format: "%.1f", displayedDistance)) \(usesMiles ? "miles" : "kilometres"), top speed \(Int(displayedTopSpeed.rounded())) \(usesMiles ? "miles per hour" : "kilometres per hour")")
         .accessibilityHint("Opens drive details. Touch and hold to delete.")
     }
@@ -726,6 +713,7 @@ private struct DriveDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Namespace private var detailActionsGlassNamespace
     @State private var showingDeleteConfirmation = false
     @State private var showingRoute = false
     @State private var routeCoordinates: [DriveRoutePoint]
@@ -750,7 +738,7 @@ private struct DriveDetailView: View {
 
     var body: some View {
         ZStack {
-            SpeedometerStyle.background.ignoresSafeArea()
+            VeluraAmbientBackdrop(intensity: 0.16)
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 22) {
@@ -760,9 +748,9 @@ private struct DriveDetailView: View {
                                 .modifier(AdaptiveFont(size: 16, weight: .semibold))
                                 .foregroundStyle(SpeedometerStyle.foreground)
                                 .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
+                                .veluraGlassCircle(interactive: true)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(VeluraGlassPressButtonStyle())
                         .accessibilityLabel("Back to drives")
                         Text("Drive details")
                             .modifier(AdaptiveFont(size: 19, weight: .semibold, design: .rounded))
@@ -803,33 +791,43 @@ private struct DriveDetailView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 17)
-                    .background(SpeedometerStyle.foreground.opacity(0.025), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .glassEffect(.regular, in: .rect(cornerRadius: 22))
+                    .veluraGlassCard(cornerRadius: 22)
 
-                    Button {
-                        showingRoute = true
-                    } label: {
-                        Label("View route", systemImage: "map.fill")
-                            .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(SpeedometerStyle.accent)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 48)
-                            .glassEffect(.regular.tint(SpeedometerStyle.accent.opacity(0.15)), in: .capsule)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens the recorded route, or an explanation if no route was saved")
+                    GlassEffectContainer(spacing: 12) {
+                        VStack(spacing: 12) {
+                            Button {
+                                showingRoute = true
+                            } label: {
+                                Label("View route", systemImage: "map.fill")
+                                    .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(SpeedometerStyle.accent)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(minHeight: 50)
+                                    .contentShape(Capsule())
+                                    .veluraGlassCapsule(
+                                        tint: SpeedometerStyle.accent.opacity(0.18),
+                                        interactive: true
+                                    )
+                                    .glassEffectID("detail-view-route", in: detailActionsGlassNamespace)
+                            }
+                            .buttonStyle(VeluraGlassPressButtonStyle())
+                            .accessibilityHint("Opens the recorded route, or an explanation if no route was saved")
 
-                    Button(role: .destructive) {
-                        showingDeleteConfirmation = true
-                    } label: {
-                        Label("Delete drive", systemImage: "trash")
-                            .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color.red.opacity(0.9))
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 48)
-                            .glassEffect(.regular, in: .capsule)
+                            Button(role: .destructive) {
+                                showingDeleteConfirmation = true
+                            } label: {
+                                Label("Delete drive", systemImage: "trash")
+                                    .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(SpeedometerStyle.warning)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(minHeight: 50)
+                                    .contentShape(Capsule())
+                                    .veluraGlassCapsule(interactive: true)
+                                    .glassEffectID("detail-delete-drive", in: detailActionsGlassNamespace)
+                            }
+                            .buttonStyle(VeluraGlassPressButtonStyle())
+                        }
                     }
-                    .buttonStyle(.plain)
                     .confirmationDialog("Delete this drive?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
                         Button("Delete drive", role: .destructive) {
                             onDelete()
