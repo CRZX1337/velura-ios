@@ -383,7 +383,10 @@ struct VeluraTests {
             DriveRoutePoint(
                 latitude: 37 + Double(offset) * 0.001,
                 longitude: -122,
-                timestamp: timestamp.addingTimeInterval(Double(offset) * 2)
+                timestamp: timestamp.addingTimeInterval(Double(offset) * 2),
+                speedKmh: 45 + Double(offset) * 15,
+                altitudeMeters: 120 + Double(offset) * 5,
+                verticalAccuracy: 4
             )
         }
         let storage = ActiveDriveFileStorage(baseDirectoryURL: root)
@@ -397,6 +400,309 @@ struct VeluraTests {
         let reloaded = ActiveDriveFileStorage(baseDirectoryURL: root).load()
         #expect(reloaded.errorMessage == nil)
         #expect(reloaded.snapshot?.routeCoordinates == points)
+    }
+
+    @Test func exportsValidGPXWithCoordinatesTimestampsElevationAndSpeedExtensions() throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let route = [
+            DriveRoutePoint(
+                latitude: 48.137154,
+                longitude: 11.576124,
+                timestamp: start,
+                segmentIndex: 0,
+                speedKmh: 36,
+                altitudeMeters: 520.5,
+                verticalAccuracy: 6
+            ),
+            DriveRoutePoint(
+                latitude: 48.138000,
+                longitude: 11.577200,
+                timestamp: start.addingTimeInterval(10),
+                segmentIndex: 0,
+                speedKmh: 72,
+                altitudeMeters: 524.0,
+                verticalAccuracy: 40 // Inaccurate elevation must be omitted
+            ),
+            DriveRoutePoint(
+                latitude: 48.139000,
+                longitude: 11.578500,
+                timestamp: start.addingTimeInterval(30),
+                segmentIndex: 1,
+                speedKmh: 108,
+                altitudeMeters: nil,
+                verticalAccuracy: nil
+            )
+        ]
+        let drive = DriveRecord(date: start, duration: 30, distanceKm: 0.4, topSpeedKmh: 108, routeCoordinates: route)
+        let xml = try GPXExporter.makeGPXString(for: drive, trackName: "Test & <Route> \"1\"")
+
+        #expect(xml.contains(#"<?xml version="1.0" encoding="UTF-8"?>"#))
+        #expect(xml.contains(#"<gpx version="1.1""#))
+        #expect(xml.contains("Test &amp; &lt;Route&gt; &quot;1&quot;"))
+        #expect(xml.contains(#"lat="48.1371540" lon="11.5761240""#))
+        #expect(xml.contains("<ele>520.50</ele>"))
+        #expect(!xml.contains("<ele>524.00</ele>"))
+        #expect(xml.contains("<velura:speedKmh>36.00</velura:speedKmh>"))
+        #expect(xml.contains("<velura:speedMps>10.000</velura:speedMps>"))
+        #expect(xml.contains("<velura:speedKmh>108.00</velura:speedKmh>"))
+
+        // Verify valid XML via Foundation XMLParser and separate trkseg per segmentIndex
+        let validator = GPXXMLValidator()
+        #expect(validator.parse(xml: xml))
+        #expect(validator.trackSegmentCount == 2)
+        #expect(validator.trackPointCount == 3)
+    }
+
+    @Test func rejectsGPXExportForEmptyOrInvalidRoutes() {
+        let emptyDrive = DriveRecord(date: Date(timeIntervalSince1970: 1_000), duration: 60, distanceKm: 1, topSpeedKmh: 50, routeCoordinates: [])
+        #expect(throws: GPXExportError.emptyRoute) {
+            _ = try GPXExporter.makeGPXString(for: emptyDrive)
+        }
+
+        let invalidDrive = DriveRecord(
+            date: Date(timeIntervalSince1970: 1_000),
+            duration: 60,
+            distanceKm: 1,
+            topSpeedKmh: 50,
+            routeCoordinates: [
+                DriveRoutePoint(latitude: 120, longitude: 200, timestamp: Date(timeIntervalSince1970: 1_000))
+            ]
+        )
+        #expect(throws: GPXExportError.noValidCoordinates) {
+            _ = try GPXExporter.makeGPXString(for: invalidDrive)
+        }
+    }
+
+    @Test func generatesDeterministicGPXFilenameWithDateAndTime() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000) // 2023-11-14 22:13:20 UTC
+        let drive = DriveRecord(date: date, duration: 60, distanceKm: 1, topSpeedKmh: 50)
+        let filename = GPXExporter.suggestedFilename(for: drive, timeZone: TimeZone(secondsFromGMT: 0)!)
+        #expect(filename == "Velura-Drive-2023-11-14_22-13-20.gpx")
+    }
+
+    @Test func classifiesSpeedHeatmapBandsAndRejectsOutliers() {
+        #expect(RouteSpeedBand.classify(speedKmh: 0) == .slow)
+        #expect(RouteSpeedBand.classify(speedKmh: 49.9) == .slow)
+        #expect(RouteSpeedBand.classify(speedKmh: 50) == .moderate)
+        #expect(RouteSpeedBand.classify(speedKmh: 89.9) == .moderate)
+        #expect(RouteSpeedBand.classify(speedKmh: 90) == .fast)
+        #expect(RouteSpeedBand.classify(speedKmh: 360) == .fast)
+        #expect(RouteSpeedBand.classify(speedKmh: -1) == nil)
+        #expect(RouteSpeedBand.classify(speedKmh: 400) == nil)
+        #expect(RouteSpeedBand.classify(speedKmh: .nan) == nil)
+    }
+
+    @Test func buildsHeatmapSegmentsRespectingGapsAndHistoricalRoutesWithoutSpeed() {
+        let start = Date(timeIntervalSince1970: 2_000)
+        let historicalPoints = [
+            DriveRoutePoint(latitude: 48.0, longitude: 11.0, timestamp: start, segmentIndex: 0),
+            DriveRoutePoint(latitude: 48.001, longitude: 11.001, timestamp: start.addingTimeInterval(5), segmentIndex: 0)
+        ]
+        #expect(!RouteSpeedHeatmapBuilder.hasSpeedData(in: historicalPoints))
+        #expect(RouteSpeedHeatmapBuilder.buildSegments(from: historicalPoints).isEmpty)
+
+        let speedPoints = [
+            DriveRoutePoint(latitude: 48.0, longitude: 11.0, timestamp: start, segmentIndex: 0, speedKmh: 30),
+            DriveRoutePoint(latitude: 48.001, longitude: 11.0, timestamp: start.addingTimeInterval(5), segmentIndex: 0, speedKmh: 40),
+            DriveRoutePoint(latitude: 48.002, longitude: 11.0, timestamp: start.addingTimeInterval(10), segmentIndex: 0, speedKmh: 110),
+            DriveRoutePoint(latitude: 48.003, longitude: 11.0, timestamp: start.addingTimeInterval(15), segmentIndex: 0, speedKmh: 120),
+            // Interruption gap -> new segmentIndex
+            DriveRoutePoint(latitude: 48.010, longitude: 11.0, timestamp: start.addingTimeInterval(60), segmentIndex: 1, speedKmh: 120),
+            DriveRoutePoint(latitude: 48.011, longitude: 11.0, timestamp: start.addingTimeInterval(65), segmentIndex: 1, speedKmh: 120)
+        ]
+        #expect(RouteSpeedHeatmapBuilder.hasSpeedData(in: speedPoints))
+        let segments = RouteSpeedHeatmapBuilder.buildSegments(from: speedPoints)
+        #expect(segments.count == 4) // slow (30-40), moderate (40-110 avg 75), fast (110-120), fast in segment 1
+        #expect(segments.first?.band == .slow)
+        #expect(segments.last?.band == .fast)
+        #expect(segments.last?.coordinates.count == 2)
+    }
+
+    @Test func aggregatesInsightsAcrossPeriodsAndTimezonesAndComputesElevation() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 3600)! // UTC+1
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 18, hour: 15, minute: 0))! // Wednesday
+        let mondayDriveDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9, minute: 0))!
+        let lastWeekDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 12, minute: 0))!
+
+        let elevationRoute = [
+            DriveRoutePoint(latitude: 48.0, longitude: 11.0, timestamp: now, altitudeMeters: 500, verticalAccuracy: 5),
+            DriveRoutePoint(latitude: 48.002, longitude: 11.0, timestamp: now.addingTimeInterval(10), altitudeMeters: 501, verticalAccuracy: 5), // within noise threshold
+            DriveRoutePoint(latitude: 48.004, longitude: 11.0, timestamp: now.addingTimeInterval(20), altitudeMeters: 520, verticalAccuracy: 5), // +20m
+            DriveRoutePoint(latitude: 48.006, longitude: 11.0, timestamp: now.addingTimeInterval(30), altitudeMeters: 510, verticalAccuracy: 5), // -10m
+            DriveRoutePoint(latitude: 48.008, longitude: 11.0, timestamp: now.addingTimeInterval(40), altitudeMeters: 900, verticalAccuracy: 80) // rejected inaccurate
+        ]
+
+        let todayDrive = DriveRecord(
+            date: now.addingTimeInterval(-1_800),
+            duration: 1_800,
+            movingDuration: 1_500,
+            distanceKm: 30,
+            topSpeedKmh: 110,
+            routeCoordinates: elevationRoute
+        )
+        let mondayDrive = DriveRecord(
+            date: mondayDriveDate,
+            duration: 3_600,
+            movingDuration: 3_000,
+            distanceKm: 60,
+            topSpeedKmh: 130
+        )
+        let oldDrive = DriveRecord(
+            date: lastWeekDate,
+            duration: 1_200,
+            distanceKm: 15,
+            topSpeedKmh: 80
+        )
+
+        let allDrives = [todayDrive, mondayDrive, oldDrive]
+        let todayFiltered = DrivingInsightsCalculator.drives(in: .today, from: allDrives, now: now, calendar: calendar)
+        #expect(todayFiltered.count == 1)
+
+        let weekFiltered = DrivingInsightsCalculator.drives(in: .week, from: allDrives, now: now, calendar: calendar)
+        #expect(weekFiltered.count == 2)
+
+        let weekSummary = DrivingInsightsCalculator.summarize(drives: weekFiltered)
+        #expect(weekSummary.driveCount == 2)
+        #expect(weekSummary.totalDistanceKm == 90)
+        #expect(weekSummary.totalDuration == 5_400)
+        #expect(weekSummary.movingDuration == 4_500)
+        #expect(weekSummary.hasMovingDurationData)
+        #expect(abs(weekSummary.averageSpeedKmh - 60) < 0.01)
+        #expect(weekSummary.topSpeedKmh == 130)
+        #expect(weekSummary.elevationGainMeters == 20)
+        #expect(weekSummary.elevationLossMeters == 10)
+
+        let weekBuckets = DrivingInsightsCalculator.buckets(for: .week, drives: weekFiltered, now: now, calendar: calendar)
+        #expect(weekBuckets.count == 7)
+        #expect(weekBuckets[0].distanceKm == 60) // Monday
+        #expect(weekBuckets[2].distanceKm == 30) // Wednesday (today)
+        #expect(weekBuckets[2].isCurrent)
+
+        let todayBuckets = DrivingInsightsCalculator.buckets(for: .today, drives: todayFiltered, now: now, calendar: calendar)
+        #expect(todayBuckets.count == 6)
+        #expect(todayBuckets.reduce(0) { $0 + $1.distanceKm } == 30)
+    }
+
+    @Test func decodesLegacyDriveRecordAndMetadataWithoutNewOptionalFields() throws {
+        let legacyRecordJSON = """
+        {
+          "id": "11111111-2222-3333-4444-555555555555",
+          "date": 1000,
+          "duration": 120,
+          "distanceKm": 2.4,
+          "topSpeedKmh": 65,
+          "routeCoordinates": [
+            { "latitude": 48.1, "longitude": 11.5, "timestamp": 1000, "segmentIndex": 0 }
+          ],
+          "interruptionGaps": []
+        }
+        """
+        let decoded = try JSONDecoder().decode(DriveRecord.self, from: Data(legacyRecordJSON.utf8))
+        #expect(decoded.movingDuration == nil)
+        #expect(decoded.pausedDuration == nil)
+        #expect(decoded.routeCoordinates.first?.speedKmh == nil)
+        #expect(decoded.routeCoordinates.first?.altitudeMeters == nil)
+        #expect(abs(decoded.averageSpeedKmh - 72) < 0.01)
+
+        let legacyMetadataJSON = """
+        {
+          "sessionID": "11111111-2222-3333-4444-555555555555",
+          "startedAt": 1000,
+          "elapsedSeconds": 120,
+          "distanceKm": 2.4,
+          "topSpeedKmh": 65,
+          "routePointCount": 1,
+          "updatedAt": 1120,
+          "routeSegmentIndex": 0,
+          "interruptionGaps": []
+        }
+        """
+        let decodedMeta = try JSONDecoder().decode(ActiveDriveMetadata.self, from: Data(legacyMetadataJSON.utf8))
+        #expect(decodedMeta.movingSeconds == 0)
+        #expect(decodedMeta.pausedSeconds == 0)
+    }
+
+    @Test @MainActor func transitionsDriveStatesCleanlyOnPauseAndReset() {
+        let model = SpeedometerModel()
+        #expect(model.driveState == .idle)
+        #expect(model.elapsedTime() == 0)
+        #expect(model.movingTime() == 0)
+        #expect(model.pausedTime() == 0)
+        #expect(model.averageSpeedKmh() == 0)
+
+        // Pausing while idle must be a no-op and preserve idle state.
+        model.pauseSession()
+        #expect(model.driveState == .idle)
+        #expect(!model.isSessionActive)
+
+        // Reset clears metrics cleanly.
+        model.resetSession()
+        #expect(model.driveState == .idle)
+        #expect(model.speedKmh == 0)
+        #expect(model.displaySpeedKmh == 0)
+    }
+
+    @Test @MainActor func tracksActivePausedAndResumedSegmentsWithoutBridgingGaps() {
+        let model = SpeedometerModel()
+        let base = Date()
+        model.simulateSessionStartForTesting(at: base.addingTimeInterval(-4))
+        #expect(model.driveState == .active)
+
+        let p1 = CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 48.1370, longitude: 11.5760),
+            altitude: 520,
+            horizontalAccuracy: 5,
+            verticalAccuracy: 5,
+            course: 0,
+            speed: 15, // 54 km/h
+            timestamp: base.addingTimeInterval(-3)
+        )
+        let p2 = CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 48.1373, longitude: 11.5760),
+            altitude: 522,
+            horizontalAccuracy: 5,
+            verticalAccuracy: 5,
+            course: 0,
+            speed: 15,
+            timestamp: base.addingTimeInterval(-1)
+        )
+        model.simulateLocationSampleForTesting(p1, receivedAt: base)
+        model.simulateLocationSampleForTesting(p2, receivedAt: base)
+        let distanceBeforePause = model.distanceKm
+        #expect(distanceBeforePause > 0)
+        #expect(model.movingTime(at: base) >= 1.9)
+
+        model.simulatePauseForTesting(at: base)
+        #expect(model.driveState == .paused)
+        #expect(!model.isSessionActive)
+        let elapsedAtPause = model.elapsedTime(at: base)
+        #expect(abs(model.elapsedTime(at: base.addingTimeInterval(60)) - elapsedAtPause) < 0.01)
+        #expect(model.pausedTime(at: base.addingTimeInterval(60)) >= 59.9)
+
+        model.simulateResumeForTesting(at: base.addingTimeInterval(60))
+        #expect(model.driveState == .active)
+        #expect(model.pausedSeconds >= 59.9)
+
+        // New point after resume must start a new route segment without adding fake jump distance
+        let resumeSampleTime = Date().addingTimeInterval(0.2)
+        let p3 = CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 48.1400, longitude: 11.5800),
+            altitude: 530,
+            horizontalAccuracy: 5,
+            verticalAccuracy: 5,
+            course: 0,
+            speed: 12,
+            timestamp: resumeSampleTime
+        )
+        model.simulateLocationSampleForTesting(p3, receivedAt: resumeSampleTime)
+        #expect(abs(model.distanceKm - distanceBeforePause) < 0.001)
+        #expect(model.routeCoordinates.last?.segmentIndex == 1)
+        #expect(model.routeCoordinates.last?.speedKmh != nil)
+        #expect(model.routeCoordinates.last?.altitudeMeters == 530)
+
+        model.resetSession()
+        #expect(model.driveState == .idle)
     }
 
     private func temporaryHistoryStorage() -> (URL, UserDefaults, String) {
@@ -438,5 +744,32 @@ struct VeluraTests {
             speed: speed,
             timestamp: timestamp
         )
+    }
+}
+
+private final class GPXXMLValidator: NSObject, XMLParserDelegate {
+    private(set) var trackSegmentCount = 0
+    private(set) var trackPointCount = 0
+
+    func parse(xml: String) -> Bool {
+        trackSegmentCount = 0
+        trackPointCount = 0
+        let parser = XMLParser(data: Data(xml.utf8))
+        parser.delegate = self
+        return parser.parse()
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        if elementName == "trkseg" {
+            trackSegmentCount += 1
+        } else if elementName == "trkpt" {
+            trackPointCount += 1
+        }
     }
 }
