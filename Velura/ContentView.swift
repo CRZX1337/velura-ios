@@ -34,6 +34,7 @@ struct ContentView: View {
     @AppStorage("speedometer.firstLaunchSetup.completed") private var hasCompletedFirstLaunchSetup = false
     @State private var showingResetConfirmation = false
     @State private var showsActiveDriveMap = false
+    @State private var showsDriveMode = false
     @State private var pendingActiveDriveMapRequest = false
     @State private var selectedTab: MainTab = .speedometer
     @Namespace private var rangeSelectionNamespace
@@ -84,6 +85,11 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showsActiveDriveMap) {
             ActiveDriveView(model: model) {
                 showsActiveDriveMap = false
+            }
+        }
+        .fullScreenCover(isPresented: $showsDriveMode) {
+            DriveModeView(model: model) {
+                showsDriveMode = false
             }
         }
         .alert("Drive storage issue", isPresented: Binding(
@@ -257,7 +263,8 @@ struct ContentView: View {
             rangeMaximum: rangeMaximum,
             showsGPSStatus: showsGPSStatus,
             onResetRequested: { showingResetConfirmation = true },
-            onOpenActiveRoute: { showsActiveDriveMap = true }
+            onOpenActiveRoute: { showsActiveDriveMap = true },
+            onOpenDriveMode: { showsDriveMode = true }
         )
         .confirmationDialog("Reset this drive?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
             Button("Reset drive", role: .destructive) {

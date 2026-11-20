@@ -47,6 +47,7 @@ struct SpeedDashboardView: View {
     let showsGPSStatus: Bool
     let onResetRequested: () -> Void
     let onOpenActiveRoute: () -> Void
+    let onOpenDriveMode: () -> Void
 
     private var unit: String { usesMiles ? "mph" : "km/h" }
     private var distanceUnit: String { usesMiles ? "mi" : "km" }
@@ -137,6 +138,7 @@ struct SpeedDashboardView: View {
     private var brandHeader: some View {
         if dynamicTypeSize.isAccessibilitySize {
             HStack {
+                driveModeButton
                 brandTitle
                 Spacer(minLength: 8)
                 if model.hasUnfinishedSession { resetDriveButton }
@@ -145,15 +147,34 @@ struct SpeedDashboardView: View {
         } else {
             ZStack {
                 brandTitle
-                if model.hasUnfinishedSession {
-                    HStack {
-                        Spacer()
+                HStack {
+                    driveModeButton
+                    Spacer()
+                    if model.hasUnfinishedSession {
                         resetDriveButton
                     }
                 }
             }
             .frame(minHeight: 44)
         }
+    }
+
+    private var driveModeButton: some View {
+        Button(action: onOpenDriveMode) {
+            HStack(spacing: 6) {
+                Image(systemName: "car.fill")
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold))
+                Text("Drive")
+                    .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(SpeedometerStyle.accent)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 40)
+            .contentShape(Capsule())
+            .veluraGlassCapsule(tint: SpeedometerStyle.accent.opacity(0.14), interactive: true)
+        }
+        .buttonStyle(VeluraGlassPressButtonStyle())
+        .accessibilityLabel("Open Drive Mode cockpit")
     }
 
     private var brandTitle: some View {

@@ -16,6 +16,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Velura uses location for speed, distance, and route only during drives you explicitly start. Location updates may continue in the background while a drive is active, subject to iOS limits; force-quitting or system termination may stop tracking.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Velura optionally displays and controls your currently playing Apple Music track in Drive Mode.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>CFBundleURLTypes</key>
