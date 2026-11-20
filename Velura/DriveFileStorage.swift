@@ -289,6 +289,9 @@ final class ActiveDriveFileStorage {
     private var persistedRoutePointCount = 0
     private var pendingRoutePoints: [Int: DriveRoutePoint] = [:]
     private var routeJournalWritable = true
+    private let routeBatchThreshold = 6
+    private let routeFlushInterval: TimeInterval = 4
+    private var lastRouteFlushAt = Date.distantPast
 
     init(baseDirectoryURL: URL? = nil, fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -420,7 +423,7 @@ final class ActiveDriveFileStorage {
         try ensureLegacySnapshotMigrated(paths: paths)
         try prepareSession(metadata.sessionID, paths: paths)
         guard routeJournalWritable else { throw DriveFileStorageError.invalidRouteJournal }
-        try flushPendingRoutePoints(at: paths.routeJournal)
+        try flushPendingRoutePoints(at: paths.routeJournal, synchronize: true)
         guard metadata.routePointCount == persistedRoutePointCount else {
             throw DriveFileStorageError.routeCheckpointMismatch(
                 expected: metadata.routePointCount,
@@ -433,14 +436,26 @@ final class ActiveDriveFileStorage {
         try data.write(to: paths.metadata, options: .atomic)
     }
 
-    func appendRoutePoint(sessionID: UUID, index: Int, point: DriveRoutePoint) throws {
+    func appendRoutePoint(sessionID: UUID, index: Int, point: DriveRoutePoint, forceFlush: Bool = false) throws {
         let paths = try storagePaths(create: true)
         try ensureLegacySnapshotMigrated(paths: paths)
         try prepareSession(sessionID, paths: paths)
         guard routeJournalWritable, index >= 0 else { throw DriveFileStorageError.invalidRouteJournal }
         guard index >= persistedRoutePointCount else { return }
         pendingRoutePoints[index] = point
-        try flushPendingRoutePoints(at: paths.routeJournal)
+        let shouldFlush = forceFlush
+            || pendingRoutePoints.count >= routeBatchThreshold
+            || Date().timeIntervalSince(lastRouteFlushAt) >= routeFlushInterval
+        if shouldFlush {
+            try flushPendingRoutePoints(at: paths.routeJournal, synchronize: forceFlush)
+        }
+    }
+
+    func flushPendingRoutePointsIfNeeded() throws {
+        guard !pendingRoutePoints.isEmpty else { return }
+        let paths = try storagePaths(create: true)
+        guard routeJournalWritable else { throw DriveFileStorageError.invalidRouteJournal }
+        try flushPendingRoutePoints(at: paths.routeJournal, synchronize: true)
     }
 
     func clear() throws {
@@ -480,6 +495,7 @@ final class ActiveDriveFileStorage {
         persistedRoutePointCount = 0
         pendingRoutePoints.removeAll()
         routeJournalWritable = true
+        lastRouteFlushAt = .distantPast
     }
 
     private func ensureLegacySnapshotMigrated(paths: StoragePaths) throws {
@@ -526,28 +542,40 @@ final class ActiveDriveFileStorage {
         routeJournalWritable = true
     }
 
-    private func flushPendingRoutePoints(at routeJournalURL: URL) throws {
-        while let point = pendingRoutePoints[persistedRoutePointCount] {
-            try appendRouteEntry(
-                VersionedActiveDriveRouteEntry(schemaVersion: 1, index: persistedRoutePointCount, point: point),
-                to: routeJournalURL
-            )
-            pendingRoutePoints.removeValue(forKey: persistedRoutePointCount)
-            persistedRoutePointCount += 1
+    private func flushPendingRoutePoints(at routeJournalURL: URL, synchronize: Bool) throws {
+        var batchData = Data()
+        var flushedIndices: [Int] = []
+        var nextIndex = persistedRoutePointCount
+
+        while let point = pendingRoutePoints[nextIndex] {
+            let entry = VersionedActiveDriveRouteEntry(schemaVersion: 1, index: nextIndex, point: point)
+            var line = try JSONEncoder().encode(entry)
+            line.append(0x0A)
+            batchData.append(line)
+            flushedIndices.append(nextIndex)
+            nextIndex += 1
         }
+
+        guard !batchData.isEmpty else { return }
+        try appendRouteData(batchData, to: routeJournalURL, synchronize: synchronize)
+        for index in flushedIndices {
+            pendingRoutePoints.removeValue(forKey: index)
+        }
+        persistedRoutePointCount = nextIndex
+        lastRouteFlushAt = Date()
     }
 
-    private func appendRouteEntry(_ entry: VersionedActiveDriveRouteEntry, to url: URL) throws {
+    private func appendRouteData(_ data: Data, to url: URL, synchronize: Bool) throws {
         if !fileManager.fileExists(atPath: url.path) {
             try Data().write(to: url, options: .atomic)
         }
-        var line = try JSONEncoder().encode(entry)
-        line.append(0x0A)
         let fileHandle = try FileHandle(forWritingTo: url)
         defer { try? fileHandle.close() }
         try fileHandle.seekToEnd()
-        try fileHandle.write(contentsOf: line)
-        try fileHandle.synchronize()
+        try fileHandle.write(contentsOf: data)
+        if synchronize {
+            try fileHandle.synchronize()
+        }
     }
 
     private func writeRouteJournal(_ points: [DriveRoutePoint], to url: URL) throws {

@@ -247,13 +247,28 @@ final class ActiveDriveStore {
         sessionID: UUID,
         index: Int,
         point: DriveRoutePoint,
+        forceFlush: Bool = false,
         completion: ((String?) -> Void)? = nil
     ) {
         let storage = self.storage
         ioQueue.async {
             let errorMessage: String?
             do {
-                try storage.appendRoutePoint(sessionID: sessionID, index: index, point: point)
+                try storage.appendRoutePoint(sessionID: sessionID, index: index, point: point, forceFlush: forceFlush)
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            DispatchQueue.main.async { completion?(errorMessage) }
+        }
+    }
+
+    func flush(completion: ((String?) -> Void)? = nil) {
+        let storage = self.storage
+        ioQueue.async {
+            let errorMessage: String?
+            do {
+                try storage.flushPendingRoutePointsIfNeeded()
                 errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription

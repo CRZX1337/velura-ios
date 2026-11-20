@@ -53,10 +53,13 @@ struct GPSLocationFilter {
             return .inaccurate
         }
 
-        guard location.speed.isFinite, location.speed >= 0 else { return .inaccurate }
-        guard location.speed * 3.6 <= maximumPlausibleSpeedKmh else { return .implausible }
+        guard location.speed.isFinite else { return .inaccurate }
+        let hasValidSpeed = location.speed >= 0
+        if hasValidSpeed {
+            guard location.speed * 3.6 <= maximumPlausibleSpeedKmh else { return .implausible }
+        }
         guard location.speedAccuracy.isFinite else { return .inaccurate }
-        if location.speedAccuracy >= 0 && location.speedAccuracy > maximumSpeedAccuracy {
+        if hasValidSpeed && location.speedAccuracy >= 0 && location.speedAccuracy > maximumSpeedAccuracy {
             return .inaccurate
         }
 
@@ -74,12 +77,14 @@ struct GPSLocationFilter {
         let maximumPlausibleDistance = maximumPlausibleSpeedMetersPerSecond * timeDelta + positionErrorAllowance
         guard distance <= maximumPlausibleDistance else { return .implausible }
 
-        let impliedSpeed = distance / timeDelta
-        let speedMismatchAllowance = min(
-            35,
-            max(15, positionErrorAllowance / max(timeDelta, 1))
-        )
-        guard abs(location.speed - impliedSpeed) <= speedMismatchAllowance else { return .implausible }
+        if hasValidSpeed {
+            let impliedSpeed = distance / timeDelta
+            let speedMismatchAllowance = min(
+                35,
+                max(15, positionErrorAllowance / max(timeDelta, 1))
+            )
+            guard abs(location.speed - impliedSpeed) <= speedMismatchAllowance else { return .implausible }
+        }
 
         return nil
     }

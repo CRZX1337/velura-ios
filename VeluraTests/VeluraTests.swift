@@ -342,6 +342,63 @@ struct VeluraTests {
         #expect(!FileManager.default.fileExists(atPath: legacyURL.path))
     }
 
+    @Test func acceptsInitialValidCoordinateWhenReportedSpeedIsUnknown() {
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+        let sample = location(latitude: 37, longitude: -122, accuracy: 8, speed: -1, at: timestamp)
+
+        #expect(filter.issue(for: sample, receivedAt: timestamp, previousLocation: nil) == nil)
+    }
+
+    @Test func rejectsOutlierPositionJumpEvenWhenReportedSpeedIsUnknown() {
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+        let previous = location(latitude: 37, longitude: -122, accuracy: 5, speed: -1, at: timestamp)
+        let jump = location(latitude: 37, longitude: -121.99, accuracy: 5, speed: -1, at: timestamp.addingTimeInterval(1))
+
+        #expect(filter.issue(for: jump, receivedAt: jump.timestamp, previousLocation: previous) == .implausible)
+    }
+
+    @Test func smoothsDisplaySpeedWhileSnappingBelowOneKmhToZero() {
+        var smoother = SpeedDisplaySmoother()
+
+        let first = smoother.update(rawSpeedKmh: 50)
+        #expect(first == 50)
+
+        let second = smoother.update(rawSpeedKmh: 60)
+        #expect(second > 50 && second < 60)
+
+        let stopped = smoother.update(rawSpeedKmh: 0.4)
+        #expect(stopped == 0)
+
+        smoother.reset()
+        #expect(smoother.smoothedValue == 0)
+    }
+
+    @Test func batchesRoutePointsAndFlushesOnSaveOrExplicitFlush() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("VeluraBatchFlush-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sessionID = UUID()
+        let timestamp = Date(timeIntervalSince1970: 4_000)
+        let points = (0..<3).map { offset in
+            DriveRoutePoint(
+                latitude: 37 + Double(offset) * 0.001,
+                longitude: -122,
+                timestamp: timestamp.addingTimeInterval(Double(offset) * 2)
+            )
+        }
+        let storage = ActiveDriveFileStorage(baseDirectoryURL: root)
+        try storage.save(activeMetadata(sessionID: sessionID, routePointCount: 0, at: timestamp))
+        for (index, point) in points.enumerated() {
+            try storage.appendRoutePoint(sessionID: sessionID, index: index, point: point)
+        }
+        try storage.flushPendingRoutePointsIfNeeded()
+        try storage.save(activeMetadata(sessionID: sessionID, routePointCount: points.count, at: timestamp.addingTimeInterval(6)))
+
+        let reloaded = ActiveDriveFileStorage(baseDirectoryURL: root).load()
+        #expect(reloaded.errorMessage == nil)
+        #expect(reloaded.snapshot?.routeCoordinates == points)
+    }
+
     private func temporaryHistoryStorage() -> (URL, UserDefaults, String) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("VeluraHistory-\(UUID().uuidString)", isDirectory: true)
         let suiteName = "VeluraTests.\(UUID().uuidString)"

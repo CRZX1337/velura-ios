@@ -31,9 +31,38 @@ struct AccelerationAttemptGroup: Identifiable {
     var bestTime: TimeInterval? { attempts.map(\.duration).min() }
 }
 
+struct SpeedDisplaySmoother {
+    private(set) var smoothedValue: Double = 0
+    private var hasSample = false
+
+    mutating func update(rawSpeedKmh: Double, alpha: Double = 0.35) -> Double {
+        let clampedRaw = max(0, rawSpeedKmh)
+        if clampedRaw < 1.0 {
+            smoothedValue = 0
+            hasSample = true
+            return 0
+        }
+        guard hasSample else {
+            smoothedValue = clampedRaw
+            hasSample = true
+            return smoothedValue
+        }
+        let delta = abs(clampedRaw - smoothedValue)
+        let adaptiveAlpha = delta > 20 ? 0.65 : min(max(alpha, 0.1), 1.0)
+        smoothedValue = smoothedValue + adaptiveAlpha * (clampedRaw - smoothedValue)
+        return smoothedValue
+    }
+
+    mutating func reset() {
+        smoothedValue = 0
+        hasSample = false
+    }
+}
+
 @MainActor
 final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var speedKmh = 0.0
+    @Published private(set) var displaySpeedKmh = 0.0
     @Published private(set) var topSpeedKmh = 0.0
     @Published private(set) var distanceKm = 0.0
     @Published private(set) var elapsedSeconds = 0.0
@@ -84,22 +113,44 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     private let accelerationStartThresholdKmh = 2.0
     private var overspeedWarningEnabled = false
     private var overspeedThresholdKmh = 100.0
+    private var keepScreenAwakeEnabled = true
     private var lastSnapshotWriteAt = Date.distantPast
     private var lifecycleObservers: [NSObjectProtocol] = []
+
+    // Decoupled UI-publishing state so high-rate GPS fixes don't re-render SwiftUI every sample.
+    private var rawSpeedKmh = 0.0
+    private var rawTopSpeedKmh = 0.0
+    private var rawDistanceKm = 0.0
+    private var rawHorizontalAccuracy: CLLocationAccuracy = -1
+    private var speedSmoother = SpeedDisplaySmoother()
+    private let uiPublishInterval: TimeInterval = 0.25
+    private var lastUIPublishAt = Date.distantPast
+    private var pendingUIPublishTask: Task<Void, Never>?
 
     override init() {
         authorizationStatus = locationManager.authorizationStatus
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        locationManager.distanceFilter = 2
+        locationManager.distanceFilter = 5
         locationManager.activityType = .automotiveNavigation
         locationManager.pausesLocationUpdatesAutomatically = false
+        if defaults.object(forKey: "speedometer.keepScreenAwake") != nil {
+            keepScreenAwakeEnabled = defaults.bool(forKey: "speedometer.keepScreenAwake")
+        }
         restoreAccelerationSettings()
         DriveHistoryStore.shared.whenLoaded { [weak self] in
             self?.restoreActiveDriveSnapshot()
         }
         observeAppLifecycle()
+    }
+
+    deinit {
+        gpsFreshnessTimer?.invalidate()
+        pendingUIPublishTask?.cancel()
+        for observer in lifecycleObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     var isGPSFixStale: Bool {
@@ -180,10 +231,10 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
 
         return VeluraDriveActivityAttributes.ContentState(
-            speedKmh: speedKmh,
+            speedKmh: rawSpeedKmh,
             elapsedSeconds: elapsedTime(at: date),
-            distanceKm: distanceKm,
-            topSpeedKmh: topSpeedKmh,
+            distanceKm: rawDistanceKm,
+            topSpeedKmh: rawTopSpeedKmh,
             gpsFreshness: gpsFreshness,
             updatedAt: date,
             isRunning: isSessionActive && !ended,
@@ -298,6 +349,74 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         updateOverspeedWarning(triggerHaptic: false)
     }
 
+    func configureKeepScreenAwake(_ enabled: Bool) {
+        keepScreenAwakeEnabled = enabled
+        updateIdleTimerState()
+    }
+
+    private func updateIdleTimerState() {
+        let shouldKeepAwake = isSessionActive
+            && keepScreenAwakeEnabled
+            && UIApplication.shared.applicationState == .active
+        if UIApplication.shared.isIdleTimerDisabled != shouldKeepAwake {
+            UIApplication.shared.isIdleTimerDisabled = shouldKeepAwake
+        }
+    }
+
+    private func scheduleUIMetricsPublish(immediate: Bool = false) {
+        if immediate {
+            pendingUIPublishTask?.cancel()
+            pendingUIPublishTask = nil
+            flushUIMetricsToPublishedState()
+            return
+        }
+
+        let elapsedSinceLastPublish = Date().timeIntervalSince(lastUIPublishAt)
+        if elapsedSinceLastPublish >= uiPublishInterval {
+            pendingUIPublishTask?.cancel()
+            pendingUIPublishTask = nil
+            flushUIMetricsToPublishedState()
+        } else if pendingUIPublishTask == nil {
+            let delay = max(0.01, uiPublishInterval - elapsedSinceLastPublish)
+            pendingUIPublishTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                self?.pendingUIPublishTask = nil
+                self?.flushUIMetricsToPublishedState()
+            }
+        }
+    }
+
+    private func flushUIMetricsToPublishedState() {
+        lastUIPublishAt = Date()
+        if speedKmh != rawSpeedKmh {
+            speedKmh = rawSpeedKmh
+        }
+        let smoothed = speedSmoother.smoothedValue
+        if displaySpeedKmh != smoothed {
+            displaySpeedKmh = smoothed
+        }
+        if topSpeedKmh != rawTopSpeedKmh {
+            topSpeedKmh = rawTopSpeedKmh
+        }
+        if distanceKm != rawDistanceKm {
+            distanceKm = rawDistanceKm
+        }
+        if horizontalAccuracy != rawHorizontalAccuracy {
+            horizontalAccuracy = rawHorizontalAccuracy
+        }
+    }
+
+    private func resetDisplayedSpeedImmediate() {
+        rawSpeedKmh = 0
+        speedSmoother.reset()
+        pendingUIPublishTask?.cancel()
+        pendingUIPublishTask = nil
+        lastUIPublishAt = Date()
+        speedKmh = 0
+        displaySpeedKmh = 0
+    }
+
     func requestLocationAuthorization() {
         guard locationManager.authorizationStatus == .notDetermined else {
             authorizationStatus = locationManager.authorizationStatus
@@ -376,7 +495,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         accelerationInterruptedForGPS = false
         accelerationRunStartedAt = nil
         accelerationState = .waitingForMovement
-        canBeginAccelerationRun = hasCurrentGPSFix && speedKmh < accelerationStartThresholdKmh
+        canBeginAccelerationRun = hasCurrentGPSFix && rawSpeedKmh < accelerationStartThresholdKmh
 
         guard isSessionActive else {
             pendingAccelerationArm = true
@@ -442,12 +561,14 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         sessionStartedAt = nil
         pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? Date()
         isSessionActive = false
+        updateIdleTimerState()
         stopGPSFreshnessMonitoring()
         hasGPSFix = false
         lastValidGPSFixAt = nil
         locationUpdateFailed = false
         gpsDataQualityIssue = nil
-        speedKmh = 0
+        resetDisplayedSpeedImmediate()
+        flushUIMetricsToPublishedState()
         updateOverspeedWarning(triggerHaptic: false)
         previousLocation = nil
         updateDriveLiveActivity()
@@ -469,10 +590,12 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             }
             sessionStartedAt = nil
             isSessionActive = false
+            updateIdleTimerState()
             stopGPSFreshnessMonitoring()
             hasGPSFix = false
             lastValidGPSFixAt = nil
-            speedKmh = 0
+            resetDisplayedSpeedImmediate()
+            flushUIMetricsToPublishedState()
             previousLocation = nil
             configureBackgroundLocationUpdates(active: false)
             locationManager.stopUpdatingLocation()
@@ -495,8 +618,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             id: driveID ?? UUID(),
             date: driveStartedAt ?? finishedAt,
             duration: duration,
-            distanceKm: distanceKm,
-            topSpeedKmh: topSpeedKmh,
+            distanceKm: rawDistanceKm,
+            topSpeedKmh: rawTopSpeedKmh,
             routeCoordinates: routeCoordinates.count >= 2 ? routeCoordinates : [],
             interruptionGaps: interruptionGaps
         )
@@ -526,6 +649,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         pendingSessionStart = false
         isSessionActive = false
+        updateIdleTimerState()
         stopGPSFreshnessMonitoring()
         hasUnfinishedSession = false
         isAwaitingDriveRecoveryDecision = false
@@ -550,7 +674,15 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         previousLocation = nil
         lastValidLocation = nil
         routeCoordinates.removeAll()
+        rawSpeedKmh = 0
+        rawTopSpeedKmh = 0
+        rawDistanceKm = 0
+        rawHorizontalAccuracy = -1
+        speedSmoother.reset()
+        pendingUIPublishTask?.cancel()
+        pendingUIPublishTask = nil
         speedKmh = 0
+        displaySpeedKmh = 0
         topSpeedKmh = 0
         distanceKm = 0
         elapsedSeconds = 0
@@ -569,7 +701,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             lastValidGPSFixAt = nil
             locationUpdateFailed = false
             gpsDataQualityIssue = nil
-            speedKmh = 0
+            resetDisplayedSpeedImmediate()
             previousLocation = nil
             interruptAccelerationTestForGPSIssue()
 
@@ -580,6 +712,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
                 }
                 sessionStartedAt = nil
                 isSessionActive = false
+                updateIdleTimerState()
                 stopGPSFreshnessMonitoring()
                 pendingGapStartAt = pendingGapStartAt ?? lastProcessedLocationTimestamp ?? interruptionAt
                 configureBackgroundLocationUpdates(active: false)
@@ -613,6 +746,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         guard isSessionActive else { return }
         let receivedAt = Date()
         var receivedValidLocation = false
+        var wasFirstFix = !hasGPSFix
         let filter = GPSLocationFilter()
 
         for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) {
@@ -634,31 +768,43 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             lastProcessedLocationTimestamp = location.timestamp
             receivedValidLocation = true
 
-            horizontalAccuracy = location.horizontalAccuracy
-            hasGPSFix = true
+            rawHorizontalAccuracy = location.horizontalAccuracy
+            if !hasGPSFix { hasGPSFix = true }
             lastValidGPSFixAt = receivedAt
-            locationUpdateFailed = false
-            gpsDataQualityIssue = nil
+            if locationUpdateFailed { locationUpdateFailed = false }
+            if gpsDataQualityIssue != nil { gpsDataQualityIssue = nil }
             lastValidLocation = location
             recordRoutePoint(location)
 
-            let measuredSpeed = max(0, location.speed * 3.6)
-            speedKmh = measuredSpeed < 1.0 ? 0 : measuredSpeed
-            topSpeedKmh = max(topSpeedKmh, speedKmh)
-            updateAccelerationTest(speedKmh: speedKmh, at: location.timestamp)
+            let measuredSpeed: Double
+            if location.speed >= 0 {
+                let kmh = location.speed * 3.6
+                measuredSpeed = kmh < 1.0 ? 0 : kmh
+            } else {
+                measuredSpeed = 0
+            }
+            rawSpeedKmh = measuredSpeed
+            _ = speedSmoother.update(rawSpeedKmh: measuredSpeed)
+            rawTopSpeedKmh = max(rawTopSpeedKmh, measuredSpeed)
+            updateAccelerationTest(speedKmh: measuredSpeed, at: location.timestamp)
             updateOverspeedWarning(triggerHaptic: true)
 
             if let previousLocation {
                 let distance = location.distance(from: previousLocation)
                 let timeDelta = location.timestamp.timeIntervalSince(previousLocation.timestamp)
                 if timeDelta > 0 && timeDelta <= gpsFixStaleAfter {
-                    distanceKm += distance / 1_000
+                    rawDistanceKm += distance / 1_000
                 }
             }
             previousLocation = location
         }
 
         if receivedValidLocation {
+            let shouldPublishImmediately = wasFirstFix
+                || accelerationState == .timing
+                || accelerationState == .waitingForMovement
+            scheduleUIMetricsPublish(immediate: shouldPublishImmediately)
+            wasFirstFix = false
             startGPSFreshnessMonitoring()
             persistActiveDrive(force: false)
             updateDriveLiveActivity(at: receivedAt)
@@ -668,7 +814,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         authorizationStatus = manager.authorizationStatus
         hasGPSFix = false
-        speedKmh = 0
+        resetDisplayedSpeedImmediate()
         previousLocation = nil
         locationUpdateFailed = authorizationStatus != .denied && authorizationStatus != .restricted
         interruptAccelerationTestForGPSIssue()
@@ -693,7 +839,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
     }
 
     private func updateOverspeedWarning(triggerHaptic: Bool) {
-        let shouldWarn = isSessionActive && hasCurrentGPSFix && overspeedWarningEnabled && speedKmh >= overspeedThresholdKmh
+        let shouldWarn = isSessionActive && hasCurrentGPSFix && overspeedWarningEnabled && rawSpeedKmh >= overspeedThresholdKmh
         guard shouldWarn != isOverspeedWarningActive else { return }
         isOverspeedWarningActive = shouldWarn
         if shouldWarn && triggerHaptic {
@@ -739,7 +885,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         guard isSessionActive, hasGPSFix else { return }
         stopGPSFreshnessMonitoring()
         hasGPSFix = false
-        speedKmh = 0
+        resetDisplayedSpeedImmediate()
         gpsDataQualityIssue = nil
         pendingGapStartAt = pendingGapStartAt
             ?? lastProcessedLocationTimestamp
@@ -770,8 +916,9 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         lastValidGPSFixAt = nil
         locationUpdateFailed = false
         gpsDataQualityIssue = nil
+        rawHorizontalAccuracy = -1
         horizontalAccuracy = -1
-        speedKmh = 0
+        resetDisplayedSpeedImmediate()
         if pendingAccelerationArm {
             pendingAccelerationArm = false
             accelerationState = .waitingForMovement
@@ -790,6 +937,7 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         }
         isAwaitingDriveRecoveryDecision = false
         isSessionActive = true
+        updateIdleTimerState()
         sessionStartedAt = sessionResumedAt
         previousLocation = nil
         startGPSFreshnessMonitoring()
@@ -832,7 +980,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             ActiveDriveStore.shared.appendRoutePoint(
                 sessionID: driveID,
                 index: routeCoordinates.count - 1,
-                point: point
+                point: point,
+                forceFlush: force
             ) { [weak self] errorMessage in
                 guard let errorMessage else { return }
                 self?.drivePersistenceErrorMessage = "Active route couldn't be saved. \(errorMessage)"
@@ -860,7 +1009,12 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
         for name in names {
             let observer = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    self?.persistActiveDrive(force: true)
+                    self?.updateIdleTimerState()
+                    if self?.hasUnfinishedSession == true {
+                        self?.persistActiveDrive(force: true)
+                    } else {
+                        ActiveDriveStore.shared.flush()
+                    }
                 }
             }
             lifecycleObservers.append(observer)
@@ -872,7 +1026,9 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
+                self?.updateIdleTimerState()
                 self?.refreshGPSFreshness()
+                self?.flushUIMetricsToPublishedState()
                 self?.persistActiveDrive(force: true)
             }
         }
@@ -888,8 +1044,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             sessionID: driveID,
             startedAt: driveStartedAt,
             elapsedSeconds: elapsedTime(at: now),
-            distanceKm: distanceKm,
-            topSpeedKmh: topSpeedKmh,
+            distanceKm: rawDistanceKm,
+            topSpeedKmh: rawTopSpeedKmh,
             routePointCount: routeCoordinates.count,
             updatedAt: now,
             lastLocationAt: lastProcessedLocationTimestamp,
@@ -948,6 +1104,8 @@ final class SpeedometerModel: NSObject, ObservableObject, CLLocationManagerDeleg
             self.driveID = snapshot.sessionID ?? UUID()
             self.driveStartedAt = snapshot.startedAt
             self.elapsedSeconds = snapshot.elapsedSeconds
+            self.rawDistanceKm = snapshot.distanceKm
+            self.rawTopSpeedKmh = snapshot.topSpeedKmh
             self.distanceKm = snapshot.distanceKm
             self.topSpeedKmh = snapshot.topSpeedKmh
             self.routeCoordinates = snapshot.routeCoordinates
