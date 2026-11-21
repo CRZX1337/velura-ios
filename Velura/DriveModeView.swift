@@ -1207,9 +1207,10 @@ struct DriveModeView: View {
     private var spotifySetupSheet: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Connect your Spotify account via PKCE OAuth to show album art, song title, artist, and live playback controls inside Drive Mode.")
+                Text("Velura ships without a Spotify Client ID — each user creates their own app in the Spotify Developer Dashboard. Playback controls need Spotify Premium.")
                     .modifier(AdaptiveFont(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(SpeedometerStyle.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("SPOTIFY CLIENT ID")
@@ -1234,6 +1235,10 @@ struct DriveModeView: View {
                         .modifier(AdaptiveFont(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(SpeedometerStyle.accent)
                         .textSelection(.enabled)
+                    Text("Add this exact URI to your Spotify app, and add your account under User Management while the app is in Development Mode.")
+                        .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(SpeedometerStyle.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if let status = media.spotifyStatusMessage {

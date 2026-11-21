@@ -725,11 +725,11 @@ struct VeluraTests {
         #expect(!challenge.contains("+") && !challenge.contains("/") && !challenge.contains("="))
     }
 
-    @Test func shipsSpotifyConfigurationForOutOfTheBoxUse() {
+    @Test func shipsNoBundledSpotifyClientIDAndKeepsRedirectURI() {
         let clientID = (Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        #expect(clientID.count == 32)
-        #expect(clientID.allSatisfy { $0.isHexDigit })
+        // The IPA is distributed publicly, so every user configures their own Spotify app.
+        #expect(clientID.isEmpty)
         #expect(DriveMediaController.spotifyRedirectURI == "velura://spotify-callback")
     }
 

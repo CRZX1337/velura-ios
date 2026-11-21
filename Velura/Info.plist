@@ -18,8 +18,6 @@
 	<string>Velura uses location for speed, distance, and route only during drives you explicitly start. Location updates may continue in the background while a drive is active, subject to iOS limits; force-quitting or system termination may stop tracking.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Velura optionally displays and controls your currently playing Apple Music track in Drive Mode.</string>
-	<key>SpotifyClientID</key>
-	<string>5ac30fd2fe774e10bd617ca20fe3df96</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>spotify</string>

@@ -140,8 +140,8 @@ final class DriveMediaController: NSObject, ObservableObject, ASWebAuthenticatio
         super.init()
     }
 
-    /// Client ID shipped with the app so Spotify works out of the box; a value saved in
-    /// the setup sheet takes precedence.
+    /// Optional Client ID baked into a private build. Public builds ship without one, so
+    /// every user supplies their own via the setup sheet.
     private static var bundledClientID: String {
         guard let value = Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String else { return "" }
         return value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -272,7 +272,7 @@ final class DriveMediaController: NSObject, ObservableObject, ASWebAuthenticatio
         let clientID = spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty else {
             availability = .spotifySetupNeeded
-            spotifyStatusMessage = "Add your Spotify Client ID to enable live controls."
+            spotifyStatusMessage = "Add your own Spotify Client ID to enable live controls."
             return
         }
 
