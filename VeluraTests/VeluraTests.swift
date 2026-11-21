@@ -725,6 +725,14 @@ struct VeluraTests {
         #expect(!challenge.contains("+") && !challenge.contains("/") && !challenge.contains("="))
     }
 
+    @Test func shipsSpotifyConfigurationForOutOfTheBoxUse() {
+        let clientID = (Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(clientID.count == 32)
+        #expect(clientID.allSatisfy { $0.isHexDigit })
+        #expect(DriveMediaController.spotifyRedirectURI == "velura://spotify-callback")
+    }
+
     private func temporaryHistoryStorage() -> (URL, UserDefaults, String) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("VeluraHistory-\(UUID().uuidString)", isDirectory: true)
         let suiteName = "VeluraTests.\(UUID().uuidString)"

@@ -134,8 +134,17 @@ final class DriveMediaController: NSObject, ObservableObject, ASWebAuthenticatio
     override init() {
         let savedSource = UserDefaults.standard.string(forKey: Self.sourceStorageKey)
         self.source = DriveMediaSource(rawValue: savedSource ?? "") ?? .appleMusic
-        self.spotifyClientID = UserDefaults.standard.string(forKey: Self.spotifyClientIDKey) ?? ""
+        let storedClientID = UserDefaults.standard.string(forKey: Self.spotifyClientIDKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.spotifyClientID = storedClientID.isEmpty ? Self.bundledClientID : storedClientID
         super.init()
+    }
+
+    /// Client ID shipped with the app so Spotify works out of the box; a value saved in
+    /// the setup sheet takes precedence.
+    private static var bundledClientID: String {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String else { return "" }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func startMonitoring() {
