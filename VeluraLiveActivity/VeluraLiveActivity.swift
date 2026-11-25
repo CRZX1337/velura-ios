@@ -88,75 +88,41 @@ public struct VeluraDriveActivityAttributes: ActivityAttributes {
     public var startedAt: Date
 }
 
-private struct LiveActivityColors {
-    let background: Color
-    let foreground: Color
-    let secondary: Color
+/// Accent colours derived from the driver's theme. Text always uses the
+/// system's semantic colours so it stays legible over the system-provided
+/// Liquid Glass background of the Lock Screen presentation.
+private struct DrivePalette {
     let accent: Color
     let mint: Color
     let warning: Color
 
-    init(theme: String, mode: String, colorScheme: ColorScheme, island: Bool = false) {
+    init(theme: String, mode: String) {
         if mode == "palette" {
             switch theme {
             case "ocean":
-                background = Color(red: 0.018, green: 0.070, blue: 0.078)
-                foreground = .white
-                secondary = Color(red: 0.66, green: 0.77, blue: 0.75)
                 accent = Color(red: 0.24, green: 0.86, blue: 0.75)
-                mint = Color(red: 0.48, green: 0.92, blue: 0.70)
+                mint = Color(red: 0.42, green: 0.88, blue: 0.66)
             case "graphite":
-                background = Color(red: 0.055, green: 0.058, blue: 0.067)
-                foreground = .white
-                secondary = Color(red: 0.72, green: 0.73, blue: 0.76)
-                accent = Color(red: 1.0, green: 0.69, blue: 0.28)
-                mint = Color(red: 0.52, green: 0.88, blue: 0.65)
+                accent = Color(red: 1.0, green: 0.72, blue: 0.33)
+                mint = Color(red: 0.48, green: 0.85, blue: 0.60)
             case "forest":
-                background = Color(red: 0.027, green: 0.078, blue: 0.059)
-                foreground = Color(red: 0.92, green: 0.96, blue: 0.93)
-                secondary = Color(red: 0.66, green: 0.76, blue: 0.69)
-                accent = Color(red: 0.30, green: 0.82, blue: 0.52)
-                mint = Color(red: 0.70, green: 0.88, blue: 0.58)
+                accent = Color(red: 0.35, green: 0.85, blue: 0.56)
+                mint = Color(red: 0.68, green: 0.87, blue: 0.55)
             case "ember":
-                background = Color(red: 0.078, green: 0.067, blue: 0.063)
-                foreground = Color(red: 0.96, green: 0.93, blue: 0.87)
-                secondary = Color(red: 0.76, green: 0.70, blue: 0.63)
-                accent = Color(red: 0.83, green: 0.48, blue: 0.27)
-                mint = Color(red: 0.48, green: 0.79, blue: 0.67)
+                accent = Color(red: 0.95, green: 0.58, blue: 0.34)
+                mint = Color(red: 0.52, green: 0.82, blue: 0.65)
             case "aurora":
-                background = Color(red: 0.045, green: 0.043, blue: 0.105)
-                foreground = Color(red: 0.95, green: 0.94, blue: 1.0)
-                secondary = Color(red: 0.72, green: 0.70, blue: 0.85)
-                accent = Color(red: 0.57, green: 0.52, blue: 0.99)
-                mint = Color(red: 0.48, green: 0.91, blue: 0.80)
+                accent = Color(red: 0.64, green: 0.60, blue: 1.0)
+                mint = Color(red: 0.48, green: 0.90, blue: 0.78)
             default:
-                background = Color(red: 0.025, green: 0.043, blue: 0.067)
-                foreground = .white
-                secondary = Color(red: 0.63, green: 0.70, blue: 0.77)
-                accent = Color(red: 0.27, green: 0.79, blue: 0.98)
-                mint = Color(red: 0.34, green: 0.91, blue: 0.73)
+                accent = Color(red: 0.32, green: 0.80, blue: 0.99)
+                mint = Color(red: 0.36, green: 0.89, blue: 0.70)
             }
-            warning = Color(red: 1.0, green: 0.34, blue: 0.31)
-            return
-        }
-
-        let wantsLight = mode == "light" || (mode == "system" && colorScheme == .light)
-        let useLight = wantsLight && !island
-        if useLight {
-            background = Color(red: 0.96, green: 0.97, blue: 0.985)
-            foreground = Color(red: 0.10, green: 0.12, blue: 0.15)
-            secondary = Color(red: 0.34, green: 0.37, blue: 0.41)
-            accent = Color(red: 0.10, green: 0.38, blue: 0.75)
-            mint = Color(red: 0.10, green: 0.46, blue: 0.33)
-            warning = Color(red: 0.72, green: 0.16, blue: 0.13)
         } else {
-            background = Color(red: 0.035, green: 0.039, blue: 0.047)
-            foreground = .white
-            secondary = Color(red: 0.66, green: 0.69, blue: 0.73)
-            accent = Color(red: 0.29, green: 0.57, blue: 0.98)
-            mint = Color(red: 0.32, green: 0.84, blue: 0.63)
-            warning = Color(red: 1.0, green: 0.36, blue: 0.33)
+            accent = Color(red: 0.38, green: 0.66, blue: 1.0)
+            mint = Color(red: 0.34, green: 0.84, blue: 0.62)
         }
+        warning = Color(red: 1.0, green: 0.45, blue: 0.38)
     }
 }
 
@@ -188,12 +154,12 @@ private func gpsShortText(_ freshness: VeluraDriveActivityAttributes.ContentStat
 
 private func gpsStatusColor(
     _ freshness: VeluraDriveActivityAttributes.ContentState.GPSFreshness,
-    colors: LiveActivityColors
+    palette: DrivePalette
 ) -> Color {
     switch freshness {
-    case .good: colors.mint
-    case .searching: colors.accent
-    case .stale, .unavailable, .unreliable: colors.warning
+    case .good: palette.mint
+    case .searching: palette.accent
+    case .stale, .unavailable, .unreliable: palette.warning
     }
 }
 
@@ -210,21 +176,18 @@ private func formattedDuration(_ interval: TimeInterval) -> String {
     let hours = totalSeconds / 3_600
     let minutes = (totalSeconds % 3_600) / 60
     let seconds = totalSeconds % 60
-    return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+    return hours > 0
+        ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        : String(format: "%d:%02d", minutes, seconds)
 }
 
 private struct LockScreenDriveActivityView: View {
     let context: ActivityViewContext<VeluraDriveActivityAttributes>
-    @Environment(\.colorScheme) private var colorScheme
 
     private var state: VeluraDriveActivityAttributes.ContentState { context.state }
     private var isStale: Bool { context.isStale && !state.isEnded }
-    private var colors: LiveActivityColors {
-        LiveActivityColors(
-            theme: state.themeRawValue,
-            mode: state.appearanceModeRawValue,
-            colorScheme: colorScheme
-        )
+    private var palette: DrivePalette {
+        DrivePalette(theme: state.themeRawValue, mode: state.appearanceModeRawValue)
     }
     private var distanceUnit: String { state.usesMiles ? "mi" : "km" }
     private var speedUnit: String { state.usesMiles ? "mph" : "km/h" }
@@ -239,113 +202,104 @@ private struct LockScreenDriveActivityView: View {
     private var displayScale: CGFloat {
         switch state.displayScaleRawValue {
         case "compact": 0.88
-        case "prominent": 1.12
+        case "prominent": 1.08
         default: 1
         }
+    }
+    private var statusText: String {
+        driveStatusText(isStale: isStale, isEnded: state.isEnded, isRunning: state.isRunning)
+    }
+    private var statusColor: Color {
+        if isStale { return palette.warning }
+        return (state.isRunning && !state.isEnded) ? palette.mint : Color.secondary
     }
     private var speedCaption: String {
         if isStale { return "Last known speed" }
         return state.isEnded ? "Final speed" : "Current speed"
     }
-    private var statusColor: Color {
-        if isStale { return colors.warning }
-        if state.isRunning && !state.isEnded { return colors.mint }
-        return colors.secondary
+    private var gpsColor: Color {
+        gpsStatusColor(state.gpsFreshness, palette: palette)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "car.side.fill")
-                        .foregroundStyle(colors.accent)
-                    Text("Velura")
-                        .foregroundStyle(colors.foreground)
-                }
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+        VStack(alignment: .leading, spacing: 8) {
+            header
 
-                Spacer(minLength: 8)
-
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 6, height: 6)
-                    Text(driveStatusText(isStale: isStale, isEnded: state.isEnded, isRunning: state.isRunning))
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(statusColor)
-                }
-            }
-
-            HStack(alignment: .bottom, spacing: 12) {
-                speedReadout
-                Spacer(minLength: 8)
-                metric("Duration", value: durationText(for: state), alignment: .trailing)
-            }
-
-            ProgressView(value: progress)
-                .tint(isStale ? colors.warning : colors.accent)
-
-            HStack(alignment: .top, spacing: 8) {
-                metric("Distance", value: Text(distanceText))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                metric("Top speed", value: Text("\(topSpeed) \(speedUnit)"))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                metric(
-                    "GPS",
-                    value: Text(gpsShortText(state.gpsFreshness)),
-                    valueColor: gpsStatusColor(state.gpsFreshness, colors: colors),
-                    alignment: .trailing
-                )
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .activityBackgroundTint(colors.background)
-        .activitySystemActionForegroundColor(colors.foreground)
-        .widgetURL(URL(string: "velura://drive/active"))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Velura live drive. \(speedCaption) \(speed) \(speedUnit). Distance \(distanceText). Duration \(formattedDuration(state.elapsedSeconds)). Top speed \(topSpeed) \(speedUnit). \(gpsStatusText(state.gpsFreshness)). \(driveStatusText(isStale: isStale, isEnded: state.isEnded, isRunning: state.isRunning))")
-    }
-
-    private var speedReadout: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(speed)")
-                    .font(.system(size: 42 * displayScale, weight: .semibold, design: .rounded))
+                    .font(.system(size: 40 * displayScale, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText())
-                    .foregroundStyle(isStale ? colors.secondary : colors.foreground)
+                    .foregroundStyle(isStale ? Color.secondary : Color.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                 Text(speedUnit)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(colors.secondary)
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("Duration")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    durationText(for: state)
+                        .font(.system(size: 19, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.primary)
+                        .lineLimit(1)
+                }
             }
 
-            Text(speedCaption)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundStyle(colors.secondary)
+            ProgressView(value: progress)
+                .tint(isStale ? palette.warning : palette.accent)
+
+            HStack(alignment: .top, spacing: 8) {
+                metric("Distance", value: Text(distanceText))
+                metric("Top speed", value: Text("\(topSpeed) \(speedUnit)"))
+                metric("GPS", value: Text(gpsShortText(state.gpsFreshness)), valueColor: gpsColor)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .widgetURL(URL(string: "velura://drive/active"))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Velura live drive. \(speedCaption) \(speed) \(speedUnit). Distance \(distanceText). Duration \(formattedDuration(state.elapsedSeconds)). Top speed \(topSpeed) \(speedUnit). \(gpsStatusText(state.gpsFreshness)). \(statusText)")
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "car.side.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(palette.accent)
+            Text("Velura")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.primary)
+
+            Spacer(minLength: 8)
+
+            Circle()
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
+            Text(statusText)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(statusColor)
         }
     }
 
-    private func metric(
-        _ title: String,
-        value: Text,
-        valueColor: Color? = nil,
-        alignment: HorizontalAlignment = .leading
-    ) -> some View {
-        VStack(alignment: alignment, spacing: 1) {
+    private func metric(_ title: String, value: Text, valueColor: Color = .primary) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(colors.secondary)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
             value
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(valueColor ?? colors.foreground)
+                .foregroundStyle(valueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -354,13 +308,8 @@ private struct DynamicIslandDriveActivityView {
 
     private var state: VeluraDriveActivityAttributes.ContentState { context.state }
     private var isStale: Bool { context.isStale && !state.isEnded }
-    private var colors: LiveActivityColors {
-        LiveActivityColors(
-            theme: state.themeRawValue,
-            mode: state.appearanceModeRawValue,
-            colorScheme: .dark,
-            island: true
-        )
+    private var palette: DrivePalette {
+        DrivePalette(theme: state.themeRawValue, mode: state.appearanceModeRawValue)
     }
     private var speedUnit: String { state.usesMiles ? "mph" : "km/h" }
     private var distanceUnit: String { state.usesMiles ? "mi" : "km" }
@@ -375,51 +324,43 @@ private struct DynamicIslandDriveActivityView {
         default: 1
         }
     }
+    private var gpsColor: Color {
+        gpsStatusColor(state.gpsFreshness, palette: palette)
+    }
 
     var body: DynamicIsland {
-        let palette = colors
+        let palette = self.palette
         return DynamicIsland {
             DynamicIslandExpandedRegion(.leading) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(driveStatusText(isStale: isStale, isEnded: state.isEnded, isRunning: state.isRunning))
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isStale ? palette.warning : palette.foreground)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(isStale ? palette.warning : Color.primary)
                     Text("Velura")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(palette.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.leading, 4)
             }
             DynamicIslandExpandedRegion(.trailing) {
                 VStack(alignment: .trailing, spacing: 0) {
                     Text("\(speed)")
-                        .font(.system(size: 28 * displayScale, weight: .semibold, design: .rounded))
+                        .font(.system(size: 26 * displayScale, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                        .foregroundStyle(isStale ? palette.secondary : palette.foreground)
+                        .foregroundStyle(isStale ? Color.secondary : Color.primary)
                     Text(speedUnit)
                         .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(palette.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.trailing, 4)
             }
             DynamicIslandExpandedRegion(.bottom) {
-                VStack(spacing: 8) {
-                    HStack(alignment: .top, spacing: 8) {
-                        islandMetric("Distance", value: Text(distanceText), colors: palette)
-                        islandMetric("Duration", value: durationText(for: state), colors: palette)
-                        islandMetric("Top speed", value: Text("\(topSpeed) \(speedUnit)"), colors: palette)
-                    }
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(gpsStatusColor(state.gpsFreshness, colors: palette))
-                            .frame(width: 6, height: 6)
-                        Text(gpsStatusText(state.gpsFreshness))
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(palette.secondary)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
+                HStack(alignment: .top, spacing: 8) {
+                    islandMetric("Distance", value: Text(distanceText))
+                    islandMetric("Duration", value: durationText(for: state))
+                    islandMetric("Top speed", value: Text("\(topSpeed) \(speedUnit)"))
+                    islandMetric("GPS", value: Text(gpsShortText(state.gpsFreshness)), valueColor: gpsColor)
                 }
                 .padding(.top, 4)
             }
@@ -431,7 +372,7 @@ private struct DynamicIslandDriveActivityView {
                 .font(.system(size: 14 * displayScale, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText())
-                .foregroundStyle(isStale ? palette.warning : palette.foreground)
+                .foregroundStyle(isStale ? palette.warning : Color.primary)
         } minimal: {
             Image(systemName: isStale ? "exclamationmark.triangle.fill" : "car.side.fill")
                 .foregroundStyle(isStale ? palette.warning : palette.accent)
@@ -440,15 +381,15 @@ private struct DynamicIslandDriveActivityView {
         .widgetURL(URL(string: "velura://drive/active"))
     }
 
-    private func islandMetric(_ title: String, value: Text, colors: LiveActivityColors) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private func islandMetric(_ title: String, value: Text, valueColor: Color = .primary) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(colors.secondary)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
             value
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(colors.foreground)
+                .foregroundStyle(valueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
