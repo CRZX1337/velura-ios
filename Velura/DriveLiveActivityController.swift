@@ -96,6 +96,7 @@ final class DriveLiveActivityController {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.velura.app", category: "LiveActivity")
     private let minimumUpdateInterval: TimeInterval = 4
     private let activeContentStaleAfter: TimeInterval = 15
+    private let completedDismissalDelay: TimeInterval = 10
     private var activity: Activity<VeluraDriveActivityAttributes>?
     private var currentDriveID: UUID?
     private var requestAttempted = false
@@ -224,7 +225,7 @@ final class DriveLiveActivityController {
                     if let finalState = self.pendingEndingStates.removeValue(forKey: driveID) {
                         await requestedActivity.end(
                             ActivityContent(state: finalState, staleDate: nil),
-                            dismissalPolicy: .after(Date().addingTimeInterval(30 * 60))
+                            dismissalPolicy: .after(Date().addingTimeInterval(self.completedDismissalDelay))
                         )
                     } else {
                         await requestedActivity.end(nil, dismissalPolicy: .immediate)
@@ -291,10 +292,11 @@ final class DriveLiveActivityController {
             pendingEndingStates[driveID] = state
         }
         let finalContent = ActivityContent(state: state, staleDate: nil)
+        let dismissalDate = Date().addingTimeInterval(completedDismissalDelay)
         Task { [weak self] in
             await matchingActivity.end(
                 finalContent,
-                dismissalPolicy: .after(Date().addingTimeInterval(30 * 60))
+                dismissalPolicy: .after(dismissalDate)
             )
             self?.pendingEndingStates.removeValue(forKey: driveID)
         }
@@ -317,10 +319,11 @@ final class DriveLiveActivityController {
         _ activity: Activity<VeluraDriveActivityAttributes>,
         with state: VeluraDriveActivityAttributes.ContentState
     ) {
+        let dismissalDate = Date().addingTimeInterval(completedDismissalDelay)
         Task {
             await activity.end(
                 ActivityContent(state: state, staleDate: nil),
-                dismissalPolicy: .after(Date().addingTimeInterval(30 * 60))
+                dismissalPolicy: .after(dismissalDate)
             )
         }
     }
