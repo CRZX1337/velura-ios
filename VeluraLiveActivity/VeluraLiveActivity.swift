@@ -262,6 +262,8 @@ private struct LockScreenDriveActivityView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .activityBackgroundTint(.clear)
+        .activitySystemActionForegroundColor(.white)
         .widgetURL(URL(string: "velura://drive/active"))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Velura live drive. \(speedCaption) \(speed) \(speedUnit). Distance \(distanceText). Duration \(formattedDuration(state.elapsedSeconds)). Top speed \(topSpeed) \(speedUnit). \(gpsStatusText(state.gpsFreshness)). \(statusText)")
