@@ -73,7 +73,7 @@ jobs:
             -only-testing:VeluraUITests/VeluraScreenShots \
             -derivedDataPath build/DerivedData \
             -resultBundlePath build/shots.xcresult \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee build/xcodebuild-test.log | tail -40 || true
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee build/xcodebuild-test.log | tail -40
           ls -la build
 
       - name: Surface compiler diagnostics
@@ -83,7 +83,7 @@ jobs:
           set -uo pipefail
           if [ -f build/xcodebuild-test.log ]; then
             echo "--- diagnostics ---"
-            grep -E "error:" build/xcodebuild-test.log | sort -u | head -60 || true
+            grep -E "^[^ ]*: (error|warning): " build/xcodebuild-test.log | sort -u | head -60 || true
             echo "--- result ---"
             grep -E "\*\* (TEST|BUILD)" build/xcodebuild-test.log | tail -5 || true
           fi

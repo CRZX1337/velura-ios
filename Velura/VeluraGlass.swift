@@ -157,7 +157,7 @@ struct VeluraGlassSurfaceModifier<S: Shape>: ViewModifier {
 
 /// Fill for the content layer. Content does not sample: a scrolling card with a live
 /// glass region per row multiplies GPU cost per visible row and reads as chrome.
-struct VeluraContentSurfaceModifier<S: Shape>: ViewModifier {
+struct VeluraContentSurfaceModifier<S: InsettableShape>: ViewModifier {
     @ObservedObject private var appearance = AppAppearance.shared
     let shape: S
     let emphasized: Bool
