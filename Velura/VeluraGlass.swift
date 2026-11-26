@@ -161,10 +161,18 @@ struct VeluraContentSurfaceModifier<S: InsettableShape>: ViewModifier {
     @ObservedObject private var appearance = AppAppearance.shared
     let shape: S
     let emphasized: Bool
+    let tint: Color?
 
     func body(content: Content) -> some View {
         content
-            .background { shape.fill(fill) }
+            .background {
+                ZStack {
+                    shape.fill(fill)
+                    if let tint {
+                        shape.fill(tint)
+                    }
+                }
+            }
             .overlay {
                 shape.strokeBorder(
                     SpeedometerStyle.foreground.opacity(appearance.appearanceMode == .light ? 0.08 : 0.06),
@@ -230,21 +238,28 @@ extension View {
     }
 
     /// Content-layer card. Same silhouette as the glass cards, no sampling.
-    func veluraContentCard(cornerRadius: CGFloat = 22, emphasized: Bool = false) -> some View {
+    /// `tint` marks state (overspeed, new personal best) without turning the card into chrome.
+    func veluraContentCard(
+        cornerRadius: CGFloat = 22,
+        emphasized: Bool = false,
+        tint: Color? = nil
+    ) -> some View {
         modifier(
             VeluraContentSurfaceModifier(
                 shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous),
-                emphasized: emphasized
+                emphasized: emphasized,
+                tint: tint
             )
         )
     }
 
     /// Content-layer status capsule (GPS state, badges). Not glass — it does not float.
-    func veluraContentCapsule(emphasized: Bool = false) -> some View {
+    func veluraContentCapsule(emphasized: Bool = false, tint: Color? = nil) -> some View {
         modifier(
             VeluraContentSurfaceModifier(
                 shape: Capsule(),
-                emphasized: emphasized
+                emphasized: emphasized,
+                tint: tint
             )
         )
     }
