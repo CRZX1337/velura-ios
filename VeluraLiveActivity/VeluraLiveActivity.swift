@@ -242,19 +242,6 @@ private struct LockScreenDriveActivityView: View {
                     .padding(.top, 8)
 
                 Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text("Duration")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    durationText(for: state)
-                        .font(.system(size: 19, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.primary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                .frame(width: 86, alignment: .trailing)
             }
 
             ProgressView(value: progress)
@@ -262,6 +249,7 @@ private struct LockScreenDriveActivityView: View {
 
             HStack(alignment: .top, spacing: 8) {
                 metric("Distance", value: Text(distanceText))
+                metric("Duration", value: durationText(for: state))
                 metric("Top speed", value: Text("\(topSpeed) \(speedUnit)"))
                 metric("GPS", value: Text(gpsShortText(state.gpsFreshness)), valueColor: gpsColor)
             }
