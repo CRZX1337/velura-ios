@@ -73,8 +73,20 @@ jobs:
             -only-testing:VeluraUITests/VeluraScreenShots \
             -derivedDataPath build/DerivedData \
             -resultBundlePath build/shots.xcresult \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -80 || true
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee build/xcodebuild-test.log | tail -40 || true
           ls -la build
+
+      - name: Surface compiler diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [ -f build/xcodebuild-test.log ]; then
+            echo "--- diagnostics ---"
+            grep -E "error:" build/xcodebuild-test.log | sort -u | head -60 || true
+            echo "--- result ---"
+            grep -E "\*\* (TEST|BUILD)" build/xcodebuild-test.log | tail -5 || true
+          fi
 
       - name: Export attachments
         if: always()
@@ -110,6 +122,14 @@ jobs:
           print(f"renamed {renamed} attachments")
           PY
           find build/shots -maxdepth 1 -name '*.png' -printf '%f %s bytes\n' | sort || ls build/shots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: velura-xcodebuild-log-${{ github.run_number }}
+          path: build/xcodebuild-test.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
         if: always()
