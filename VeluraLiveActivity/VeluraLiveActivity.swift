@@ -262,6 +262,24 @@ private struct LockScreenDriveActivityView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        // Ohne containerBackground zeichnet WidgetKit im Dark Mode eine opake
+        // schwarze Flaeche. Color.clear laesst das System-Liquid-Glass der
+        // Lock-Screen-Karte durchscheinen (iOS 26).
+        .containerBackground(for: .widget) {
+            Color.clear
+        }
+        .background {
+            // dezenter Lichtreflex, damit die Glasflaeche auch dann Kontur hat,
+            // wenn das System keinen Blur beisteuert – bleibt voll transparent
+            RadialGradient(
+                colors: [palette.accent.opacity(0.16), .clear],
+                center: .topLeading,
+                startRadius: 2,
+                endRadius: 260
+            )
+            .blendMode(.plusLighter)
+            .allowsHitTesting(false)
+        }
         .activityBackgroundTint(.clear)
         .activitySystemActionForegroundColor(.white)
         .widgetURL(URL(string: "velura://drive/active"))
