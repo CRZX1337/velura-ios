@@ -1,0 +1,128 @@
+name: Screenshot harness
+
+# Builds Velura for the simulator and captures every primary surface with XCUITest.
+# The captures are the only trustworthy visual evidence for Liquid Glass: Windows and
+# Linux hosts cannot render SwiftUI, and simulator pixels are what reviewers can diff.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "harness/**"
+      - "glass/**"
+    paths:
+      - "Velura/**"
+      - "VeluraLiveActivity/**"
+      - "VeluraUITests/**"
+      - "Velura.xcodeproj/**"
+      - ".github/workflows/preview-screenshots.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Boot simulator and grant permissions
+        id: sim
+        shell: bash
+        run: |
+          set -euo pipefail
+          UDID="$(xcrun simctl list devices available iPhone -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime in sorted(data.keys(), reverse=True):
+              for dev in data[runtime]:
+                  if dev.get("isAvailable") and "iPhone" in dev.get("name", ""):
+                      print(dev["udid"])
+                      sys.exit(0)
+          sys.exit("no iPhone simulator")
+          ')"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl location "$UDID" set 48.137154,11.576124 || true
+          # Pre-grant so the location alert never covers the UI in captures.
+          xcrun simctl privacy "$UDID" grant location-always com.velura.app || true
+          xcrun simctl privacy "$UDID" grant location com.velura.app || true
+          xcrun simctl ui "$UDID" appearance dark || true
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+
+      - name: Capture screenshots
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild test \
+            -project Velura.xcodeproj \
+            -scheme Velura \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:VeluraUITests/VeluraScreenShots \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/shots.xcresult \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -80 || true
+          ls -la build
+
+      - name: Export attachments
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/shots
+          xcrun xcresulttool export attachments \
+            --path build/shots.xcresult \
+            --output-path build/shots || true
+          echo "--- exported files ---"
+          ls -la build/shots || true
+          python3 - <<'PY'
+          import json, pathlib, shutil
+          root = pathlib.Path("build/shots")
+          manifest = root / "manifest.json"
+          if not manifest.exists():
+              print("no manifest.json; nothing to rename")
+              raise SystemExit(0)
+          data = json.loads(manifest.read_text())
+          renamed = 0
+          for entry in data:
+              for att in entry.get("attachments", []):
+                  name = att.get("suggestedHumanReadableName") or att.get("exportedFileName") or ""
+                  src = root / att.get("exportedFileName", "")
+                  if not name or not src.exists():
+                      continue
+                  safe = "".join(c if c.isalnum() or c in "-_." else "-" for c in name)
+                  if not safe.lower().endswith(".png"):
+                      safe += ".png"
+                  shutil.copyfile(src, root / safe)
+                  renamed += 1
+          print(f"renamed {renamed} attachments")
+          PY
+          find build/shots -maxdepth 1 -name '*.png' -printf '%f %s bytes\n' | sort || ls build/shots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: velura-screenshots-${{ github.run_number }}
+          path: build/shots
+          if-no-files-found: warn
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: velura-xcresult-${{ github.run_number }}
+          path: build/shots.xcresult
+          if-no-files-found: warn
+          retention-days: 7

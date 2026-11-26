@@ -8,3 +8,10 @@ DerivedData/
 *.p12
 *.mobileprovision
 *.provisionprofile
+
+# Local harness artefacts
+tools/logic-tests/.build/
+tools/logic-tests/Sources/VeluraCore/
+.harness/
+screenshots/
+.agents/
