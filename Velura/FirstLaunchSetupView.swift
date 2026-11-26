@@ -96,8 +96,10 @@ struct FirstLaunchSetupView: View {
                 .padding(.bottom, 16)
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
-                .opacity(hasAppeared ? 1 : 0)
+                // Glass materializes, it does not fade: the entrance moves and scales,
+                // never drops alpha (a partially transparent ancestor kills refraction).
                 .offset(y: hasAppeared || reduceMotion ? 0 : 14)
+                .scaleEffect(hasAppeared || reduceMotion ? 1 : 0.98, anchor: .center)
                 .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: hasAppeared)
             }
         }
@@ -186,7 +188,7 @@ struct FirstLaunchSetupView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .veluraGlassCard(cornerRadius: 23, stroke: foreground.opacity(0.075))
+        .veluraContentCard(cornerRadius: 23)
         .accessibilityElement(children: .combine)
     }
 
@@ -235,38 +237,26 @@ struct FirstLaunchSetupView: View {
                 Button(action: handlePrimaryAction) {
                     Text(primaryActionTitle)
                         .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundStyle(appearance.accentForeground)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: 50)
-                        .background(
-                            LinearGradient(colors: [Color(red: 0.31, green: 0.91, blue: 1), cyan], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            in: Capsule()
-                        )
-                        .shadow(color: cyan.opacity(0.25), radius: 14, y: 4)
-                        .contentShape(Capsule())
+                        .frame(minHeight: 52)
                 }
-                .buttonStyle(VeluraGlassPressButtonStyle())
+                .buttonStyle(.glassProminent)
+                .tint(cyan)
                 .accessibilityHint(primaryActionHint)
 
                 Button(action: onContinue) {
                     Text("Continue without location")
                         .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(secondary)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: 46)
-                        .background(foreground.opacity(0.06), in: Capsule())
-                        .overlay {
-                            Capsule().stroke(foreground.opacity(0.1), lineWidth: 1)
-                        }
-                        .contentShape(Capsule())
+                        .frame(minHeight: 48)
                 }
-                .buttonStyle(VeluraGlassPressButtonStyle())
+                .buttonStyle(.glass)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .veluraGlassCard(cornerRadius: 25, stroke: cyan.opacity(0.14))
+        .veluraContentCard(cornerRadius: 25)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
         .accessibilityElement(children: .contain)
     }

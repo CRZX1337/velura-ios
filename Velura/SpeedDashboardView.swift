@@ -37,7 +37,6 @@ struct SpeedDashboardView: View {
     @ObservedObject private var dashboardLayout = AppDashboardLayout.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Namespace private var controlsGlassNamespace
     @ObservedObject var model: SpeedometerModel
 
     let dialStyle: SpeedometerDialStyle
@@ -97,7 +96,7 @@ struct SpeedDashboardView: View {
                 }
             }
         }
-        .toolbar(.visible, for: .tabBar)
+        .toolbarVisibility(.visible, for: .tabBar)
         .sensoryFeedback(.impact(weight: .medium), trigger: model.isSessionActive)
     }
 
@@ -226,7 +225,7 @@ struct SpeedDashboardView: View {
         }
         .padding(.horizontal, 17)
         .padding(.vertical, 10)
-        .veluraGlassCapsule()
+        .veluraContentCapsule()
         .accessibilityElement(children: .combine)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isGPSReadingReliable)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.authorizationStatus)
@@ -275,7 +274,7 @@ struct SpeedDashboardView: View {
                 }
             }
             .padding(.horizontal, 11)
-            .veluraGlassCard(cornerRadius: 24)
+            .veluraContentCard(cornerRadius: 24)
             .transaction { transaction in
                 transaction.animation = VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion)
             }
@@ -309,105 +308,86 @@ struct SpeedDashboardView: View {
     }
 
     private var sessionControls: some View {
-        GlassEffectContainer(spacing: 12) {
-            VStack(spacing: 12) {
+        // Native glass buttons: `.glassProminent` for the one primary action,
+        // `.glass` for secondary ones. The system owns the material, the press
+        // reaction and the morph inside the container.
+        VStack(spacing: 12) {
+            Button {
+                withAnimation(VeluraMotion.animation(VeluraMotion.morph, reduceMotion: reduceMotion)) {
+                    if model.isSessionActive {
+                        model.pauseSession()
+                    } else {
+                        model.startSession()
+                    }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: model.isSessionActive ? "pause.fill" : "play.fill")
+                        .modifier(AdaptiveFont(size: 18, weight: .bold))
+                        .contentTransition(.symbolEffect(.replace))
+
+                    Text(primaryActionTitle)
+                        .modifier(AdaptiveFont(size: 17, weight: .semibold, design: .rounded))
+                        .contentTransition(.opacity)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 54)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(SpeedometerStyle.accent)
+            .disabled(model.isDriveStorageLoading || model.isFinishingSession)
+            .accessibilityHint(model.isSessionActive ? "Pauses GPS tracking and drive statistics" : "Starts or resumes GPS speed and trip tracking")
+
+            if model.hasUnfinishedSession && !model.isDriveStorageLoading {
+                Button(action: onOpenActiveRoute) {
+                    Label("View live route", systemImage: "map")
+                        .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                }
+                .buttonStyle(.glass)
+                .disabled(model.isFinishingSession)
+                .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.96)), reduceMotion: reduceMotion))
+                .accessibilityHint("Opens the live route for this unfinished drive")
+            }
+
+            if model.hasUnfinishedSession {
                 Button {
                     withAnimation(VeluraMotion.animation(VeluraMotion.morph, reduceMotion: reduceMotion)) {
-                        if model.isSessionActive {
-                            model.pauseSession()
-                        } else {
-                            model.startSession()
-                        }
+                        model.finishSession()
                     }
                 } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: model.isSessionActive ? "pause.fill" : "play.fill")
-                            .modifier(AdaptiveFont(size: 18, weight: .bold))
-                            .foregroundStyle(SpeedometerStyle.accent)
-                            .contentTransition(.symbolEffect(.replace))
-
-                        Text(primaryActionTitle)
-                            .modifier(AdaptiveFont(size: 16, weight: .semibold, design: .rounded))
-                            .foregroundStyle(SpeedometerStyle.foreground)
-                            .contentTransition(.opacity)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 62)
-                    .contentShape(Capsule())
-                    .veluraGlassCapsule(
-                        tint: SpeedometerStyle.accent.opacity(0.24),
-                        interactive: true
-                    )
-                    .glassEffectID("drive-primary-action", in: controlsGlassNamespace)
+                    Text(model.isFinishingSession ? "Saving…" : "Finish drive")
+                        .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
                 }
-                .buttonStyle(VeluraGlassPressButtonStyle())
-                .disabled(model.isDriveStorageLoading || model.isFinishingSession)
-                .accessibilityHint(model.isSessionActive ? "Pauses GPS tracking and drive statistics" : "Starts or resumes GPS speed and trip tracking")
-
-                if model.hasUnfinishedSession && !model.isDriveStorageLoading {
-                    Button(action: onOpenActiveRoute) {
-                        Label("View live route", systemImage: "map")
-                            .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(SpeedometerStyle.accent)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 49)
-                            .contentShape(Capsule())
-                            .veluraGlassCapsule(interactive: true)
-                            .glassEffectID("drive-live-route", in: controlsGlassNamespace)
-                    }
-                    .buttonStyle(VeluraGlassPressButtonStyle())
-                    .disabled(model.isFinishingSession)
-                    .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.96)), reduceMotion: reduceMotion))
-                    .accessibilityHint("Opens the live route for this unfinished drive")
-                }
-
-                if model.hasUnfinishedSession {
-                    Button {
-                        withAnimation(VeluraMotion.animation(VeluraMotion.morph, reduceMotion: reduceMotion)) {
-                            model.finishSession()
-                        }
-                    } label: {
-                        Text(model.isFinishingSession ? "Saving…" : "Finish")
-                            .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(SpeedometerStyle.secondary)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 49)
-                            .contentShape(Capsule())
-                            .veluraGlassCapsule(interactive: true)
-                            .glassEffectID("drive-finish", in: controlsGlassNamespace)
-                    }
-                    .buttonStyle(VeluraGlassPressButtonStyle())
-                    .disabled(model.isFinishingSession)
-                    .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.96)), reduceMotion: reduceMotion))
-                    .accessibilityLabel("Finish and save this drive")
-                }
-
-                Button(action: onOpenDriveMode) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "steeringwheel")
-                            .modifier(AdaptiveFont(size: 15, weight: .semibold))
-                            .foregroundStyle(SpeedometerStyle.accent)
-                        Text("Drive Mode")
-                            .modifier(AdaptiveFont(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(SpeedometerStyle.foreground)
-                        Spacer()
-                        Text("Cockpit & Nav")
-                            .modifier(AdaptiveFont(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(SpeedometerStyle.secondary)
-                        Image(systemName: "chevron.right")
-                            .modifier(AdaptiveFont(size: 11, weight: .semibold))
-                            .foregroundStyle(SpeedometerStyle.secondary)
-                    }
-                    .padding(.horizontal, 18)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 49)
-                    .contentShape(Capsule())
-                    .veluraGlassCapsule(interactive: true)
-                    .glassEffectID("drive-mode-entry", in: controlsGlassNamespace)
-                }
-                .buttonStyle(VeluraGlassPressButtonStyle())
-                .accessibilityLabel("Open Drive Mode cockpit and in-app navigation")
+                .buttonStyle(.glass)
+                .disabled(model.isFinishingSession)
+                .transition(VeluraMotion.transition(.opacity.combined(with: .scale(scale: 0.96)), reduceMotion: reduceMotion))
+                .accessibilityLabel("Finish and save this drive")
             }
+
+            Button(action: onOpenDriveMode) {
+                HStack(spacing: 10) {
+                    Image(systemName: "steeringwheel")
+                        .modifier(AdaptiveFont(size: 15, weight: .semibold))
+                    Text("Drive Mode")
+                        .modifier(AdaptiveFont(size: 15, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Text("Cockpit & Nav")
+                        .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .modifier(AdaptiveFont(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 6)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 50)
+            }
+            .buttonStyle(.glass)
+            .accessibilityLabel("Open Drive Mode cockpit and in-app navigation")
         }
         .animation(VeluraMotion.animation(VeluraMotion.morph, reduceMotion: reduceMotion), value: model.hasUnfinishedSession)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isSessionActive)

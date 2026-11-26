@@ -102,7 +102,6 @@ struct DrivingInsightsView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 18) {
-                        header
                         periodPicker
 
                         if store.drives.isEmpty {
@@ -139,8 +138,11 @@ struct DrivingInsightsView: View {
                 }
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.visible, for: .tabBar)
+        .toolbarVisibility(.visible, for: .navigationBar)
+        .toolbarVisibility(.visible, for: .tabBar)
+        .navigationTitle("Driving insights")
+        .navigationBarTitleDisplayMode(.inline)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .preferredColorScheme(appearance.preferredColorScheme)
         .sensoryFeedback(.selection, trigger: selectedPeriod)
         .sensoryFeedback(.selection, trigger: selectedBucketIndex)
@@ -155,32 +157,6 @@ struct DrivingInsightsView: View {
                 hasAppeared = true
             }
         }
-    }
-
-    private var header: some View {
-        HStack(spacing: 10) {
-            backButton
-            Text("Driving insights")
-                .modifier(AdaptiveFont(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(SpeedometerStyle.foreground)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            Spacer()
-        }
-        .frame(minHeight: 44)
-    }
-
-    private var backButton: some View {
-        Button { dismiss() } label: {
-            Image(systemName: "chevron.left")
-                .modifier(AdaptiveFont(size: 15, weight: .semibold))
-                .foregroundStyle(SpeedometerStyle.foreground)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
-                .veluraGlassCircle(interactive: true)
-        }
-        .buttonStyle(VeluraGlassPressButtonStyle())
-        .accessibilityLabel("Back to drives")
     }
 
     private var periodPicker: some View {
@@ -222,7 +198,6 @@ struct DrivingInsightsView: View {
             }
         }
         .padding(4)
-        .veluraGlassCapsule(stroke: SpeedometerStyle.foreground.opacity(0.09))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Insights period")
     }
@@ -373,7 +348,7 @@ struct DrivingInsightsView: View {
             .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 64 : 30)
         }
         .padding(16)
-        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.1))
+        .veluraContentCard(cornerRadius: 24)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Distance chart for \(selectedPeriod.currentLabel)")
     }
@@ -474,7 +449,7 @@ struct DrivingInsightsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
-        .veluraGlassCard(cornerRadius: 20, stroke: SpeedometerStyle.foreground.opacity(0.1))
+        .veluraContentCard(cornerRadius: 20)
         .accessibilityElement(children: .combine)
     }
 
@@ -549,7 +524,7 @@ struct DrivingInsightsView: View {
             .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(16)
-        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.1))
+        .veluraContentCard(cornerRadius: 24)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Latest elevation profile, gain \(gainText), loss \(lossText), range \(minText) to \(maxText)")
     }
@@ -570,7 +545,7 @@ struct DrivingInsightsView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .padding(.vertical, 32)
-        .veluraGlassCard(cornerRadius: 24)
+        .veluraContentCard(cornerRadius: 24)
     }
 
     private var emptyState: some View {
@@ -595,7 +570,7 @@ struct DrivingInsightsView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .padding(.vertical, 36)
-        .veluraGlassCard(cornerRadius: 24)
+        .veluraContentCard(cornerRadius: 24)
     }
 }
 

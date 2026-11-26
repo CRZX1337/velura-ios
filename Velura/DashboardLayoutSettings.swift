@@ -226,7 +226,7 @@ struct DashboardLayoutSettingsSection: View {
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(15)
-        .veluraGlassCard(cornerRadius: 21)
+        .veluraContentCard(cornerRadius: 21)
     }
 
     private func presetButton(_ preset: DashboardLayoutPreset) -> some View {
@@ -293,7 +293,7 @@ private struct DashboardLayoutEditor: View {
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: layout.visibleOptionalModules)
         .navigationTitle("Dashboard layout")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .tabBar)
+        .toolbarVisibility(.visible, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 EditButton()

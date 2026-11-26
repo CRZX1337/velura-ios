@@ -344,7 +344,6 @@ struct DriveModeView: View {
             }
         }
         .padding(3)
-        .veluraGlassCapsule(stroke: SpeedometerStyle.foreground.opacity(0.11))
         .glassEffectID("drive-mode-layout", in: cockpitHeaderNamespace)
     }
 
@@ -587,10 +586,9 @@ struct DriveModeView: View {
         }
         .padding(isLandscape ? 18 : 22)
         .frame(maxWidth: .infinity, minHeight: isLandscape ? 170 : 210)
-        .veluraGlassCard(
+        .veluraContentCard(
             cornerRadius: 28,
-            tint: model.isOverspeedWarningActive ? SpeedometerStyle.warning.opacity(0.16) : nil,
-            stroke: gaugeColor.opacity(0.28)
+            tint: model.isOverspeedWarningActive ? SpeedometerStyle.warning.opacity(0.16) : nil
         )
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: displayedSpeed)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isOverspeedWarningActive)
@@ -681,8 +679,7 @@ struct DriveModeView: View {
                 .padding(.vertical, 12)
                 .veluraGlassCard(
                     cornerRadius: 22,
-                    tint: model.isOverspeedWarningActive ? SpeedometerStyle.warning.opacity(0.18) : nil,
-                    stroke: SpeedometerStyle.foreground.opacity(0.16)
+                    tint: model.isOverspeedWarningActive ? SpeedometerStyle.warning.opacity(0.18) : nil
                 )
 
                 Spacer(minLength: 8)
@@ -739,7 +736,7 @@ struct DriveModeView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .veluraGlassCard(cornerRadius: 20, stroke: SpeedometerStyle.foreground.opacity(0.14))
+            .veluraGlassCard(cornerRadius: 20)
         }
     }
 
@@ -789,7 +786,7 @@ struct DriveModeView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .veluraGlassCard(cornerRadius: 20, tint: SpeedometerStyle.mint.opacity(0.12), stroke: SpeedometerStyle.mint.opacity(0.32))
+        .veluraGlassCard(cornerRadius: 20, tint: SpeedometerStyle.mint.opacity(0.12))
     }
 
     private func mapCameraButton(
@@ -1020,7 +1017,7 @@ struct DriveModeView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .veluraGlassCard(cornerRadius: 20, stroke: SpeedometerStyle.foreground.opacity(0.1))
+        .veluraContentCard(cornerRadius: 20)
     }
 
     private var mediaSourceColor: Color {
@@ -1163,7 +1160,7 @@ struct DriveModeView: View {
                                     }
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 11)
-                                    .veluraGlassCard(cornerRadius: 16, interactive: true)
+                                    .veluraContentCard(cornerRadius: 16)
                                 }
                                 .buttonStyle(VeluraGlassPressButtonStyle())
                             }
@@ -1223,7 +1220,7 @@ struct DriveModeView: View {
                         .autocorrectionDisabled()
                         .padding(.horizontal, 12)
                         .frame(minHeight: 46)
-                        .veluraGlassCard(cornerRadius: 14)
+                        .veluraContentCard(cornerRadius: 14)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -1334,7 +1331,7 @@ struct DriveModeView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .veluraGlassCapsule()
+        .veluraContentCapsule()
     }
 
     private func cockpitMetricTile(title: String, value: String, accent: Color? = nil) -> some View {
@@ -1355,7 +1352,7 @@ struct DriveModeView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .veluraGlassCard(cornerRadius: 20, stroke: SpeedometerStyle.foreground.opacity(0.1))
+        .veluraContentCard(cornerRadius: 20)
         .accessibilityElement(children: .combine)
     }
 

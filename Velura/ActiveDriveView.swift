@@ -89,7 +89,7 @@ struct ActiveDriveView: View {
         }
         .background(appearance.background)
         .preferredColorScheme(appearance.preferredColorScheme)
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbarVisibility(.hidden, for: .navigationBar)
         .sensoryFeedback(.selection, trigger: cameraMode)
         .sensoryFeedback(.impact(weight: .medium), trigger: model.isSessionActive)
         .onAppear {
@@ -403,7 +403,7 @@ struct ActiveDriveView: View {
         .padding(.top, 11)
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity)
-        .veluraGlassCard(cornerRadius: 28, stroke: SpeedometerStyle.foreground.opacity(0.16))
+        .veluraContentCard(cornerRadius: 28)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: model.isSessionActive)
     }
 

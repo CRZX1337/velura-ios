@@ -121,12 +121,7 @@ struct DriveHistoryView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        header
                         monthSummary(compact: compactLayout)
-                        if isSearchPresented {
-                            searchField
-                                .transition(VeluraMotion.transition(.opacity.combined(with: .move(edge: .top)), reduceMotion: reduceMotion))
-                        }
                         filterControl(compact: compactLayout)
 
                         if store.isLoading {
@@ -190,8 +185,26 @@ struct DriveHistoryView: View {
                 }
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.visible, for: .tabBar)
+        .toolbarVisibility(.visible, for: .navigationBar)
+        .toolbarVisibility(.visible, for: .tabBar)
+        .navigationTitle("Drives")
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Date, distance, duration or speed")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingInsights = true
+                } label: {
+                    Image(systemName: "chart.bar.xaxis")
+                }
+                .accessibilityLabel("Driving insights")
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                historyActions
+            }
+        }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .preferredColorScheme(appearance.preferredColorScheme)
         .sensoryFeedback(.selection, trigger: filter)
         .navigationDestination(isPresented: $showingInsights) {
@@ -205,33 +218,6 @@ struct DriveHistoryView: View {
         } message: {
             Text("This permanently deletes all saved drives from this device.")
         }
-    }
-
-    private var header: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Your drives")
-                        .modifier(AdaptiveFont(size: 21, weight: .semibold, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.foreground)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack {
-                        Spacer()
-                        historyActions
-                    }
-                }
-            } else {
-                HStack {
-                    Text("Your drives")
-                        .modifier(AdaptiveFont(size: 21, weight: .semibold, design: .rounded))
-                        .foregroundStyle(SpeedometerStyle.foreground)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    historyActions
-                }
-            }
-        }
-        .frame(minHeight: 44)
     }
 
     private var historyActions: some View {
@@ -265,45 +251,8 @@ struct DriveHistoryView: View {
             }
         } label: {
             Image(systemName: "line.3.horizontal.decrease")
-                .modifier(AdaptiveFont(size: 15, weight: .semibold))
-                .foregroundStyle(SpeedometerStyle.foreground)
-                .frame(width: 44, height: 44)
-                .veluraGlassCircle(interactive: true)
         }
-        .accessibilityLabel("Search, insights or history actions")
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .modifier(AdaptiveFont(size: 15, weight: .medium))
-                .foregroundStyle(SpeedometerStyle.secondary)
-
-            TextField("Search date, distance, duration or speed", text: $searchText)
-                .modifier(AdaptiveFont(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(SpeedometerStyle.foreground)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-                .accessibilityLabel("Search drives by date, distance, duration or top speed")
-
-            if !searchText.isEmpty {
-                Button {
-                    withAnimation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion)) { searchText = "" }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .modifier(AdaptiveFont(size: 17))
-                        .foregroundStyle(SpeedometerStyle.secondary)
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 44)
-        .veluraGlassCard(cornerRadius: 18)
+        .accessibilityLabel("More history actions")
     }
 
     private var noMatchesState: some View {
@@ -334,7 +283,7 @@ struct DriveHistoryView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 16)
-        .veluraGlassCard(cornerRadius: 24)
+        .veluraContentCard(cornerRadius: 24)
     }
 
     private var filterEmptyState: some View {
@@ -365,7 +314,7 @@ struct DriveHistoryView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 16)
-        .veluraGlassCard(cornerRadius: 24)
+        .veluraContentCard(cornerRadius: 24)
     }
 
     private func monthSummary(compact: Bool) -> some View {
@@ -401,7 +350,7 @@ struct DriveHistoryView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 17)
-        .veluraGlassCard(cornerRadius: 24, stroke: SpeedometerStyle.foreground.opacity(0.11))
+        .veluraContentCard(cornerRadius: 24)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("This month’s driving summary")
     }
@@ -445,7 +394,7 @@ struct DriveHistoryView: View {
             }
         }
         .padding(4)
-        .veluraGlassCard(cornerRadius: compact ? 18 : 28, stroke: SpeedometerStyle.foreground.opacity(0.09))
+        .veluraContentCard(cornerRadius: compact ? 18 : 28)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Drive history date filter")
         .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: filter)
@@ -493,7 +442,7 @@ struct DriveHistoryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 42)
-        .veluraGlassCard(cornerRadius: 24)
+        .veluraContentCard(cornerRadius: 24)
         .padding(.top, 3)
     }
 }
@@ -554,7 +503,7 @@ private struct DriveHistoryRow: View {
             }
             .padding(.horizontal, 11)
             .padding(.vertical, compact ? 11 : 7)
-            .veluraGlassCard(cornerRadius: 22, interactive: true, stroke: SpeedometerStyle.accent.opacity(0.16))
+            .veluraContentCard(cornerRadius: 22)
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
         .buttonStyle(VeluraGlassPressButtonStyle())
@@ -746,21 +695,6 @@ private struct DriveDetailView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 22) {
-                    HStack {
-                        Button { dismiss() } label: {
-                            Image(systemName: "chevron.left")
-                                .modifier(AdaptiveFont(size: 16, weight: .semibold))
-                                .foregroundStyle(SpeedometerStyle.foreground)
-                                .frame(width: 44, height: 44)
-                                .veluraGlassCircle(interactive: true)
-                        }
-                        .buttonStyle(VeluraGlassPressButtonStyle())
-                        .accessibilityLabel("Back to drives")
-                        Text("Drive details")
-                            .modifier(AdaptiveFont(size: 19, weight: .semibold, design: .rounded))
-                            .foregroundStyle(SpeedometerStyle.foreground)
-                        Spacer()
-                    }
 
                     VStack(spacing: 7) {
                         Image(systemName: "calendar")
@@ -795,7 +729,7 @@ private struct DriveDetailView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 17)
-                    .veluraGlassCard(cornerRadius: 22)
+                    .veluraContentCard(cornerRadius: 22)
 
                     GlassEffectContainer(spacing: 12) {
                         VStack(spacing: 12) {
@@ -865,8 +799,11 @@ private struct DriveDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .top)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.visible, for: .tabBar)
+        .toolbarVisibility(.visible, for: .navigationBar)
+        .toolbarVisibility(.visible, for: .tabBar)
+        .navigationTitle("Drive details")
+        .navigationBarTitleDisplayMode(.inline)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .preferredColorScheme(appearance.preferredColorScheme)
         .navigationDestination(isPresented: $showingRoute) {
             DriveRouteView(

@@ -189,8 +189,8 @@ struct DriveRouteView: View {
             }
         }
         .preferredColorScheme(appearance.preferredColorScheme)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.visible, for: .tabBar)
+        .toolbarVisibility(.hidden, for: .navigationBar)
+        .toolbarVisibility(.visible, for: .tabBar)
         .animation(VeluraMotion.animation(VeluraMotion.content, reduceMotion: reduceMotion), value: routeCoordinates.count >= 2)
         .confirmationDialog("Delete this route?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete route", role: .destructive) {
@@ -580,7 +580,7 @@ struct DriveRouteView: View {
             }
         }
         .padding(18)
-        .veluraGlassCard(cornerRadius: 25, stroke: SpeedometerStyle.foreground.opacity(0.14))
+        .veluraContentCard(cornerRadius: 25)
     }
 
     private func elevationProfileCard(_ elevation: ElevationSummary) -> some View {

@@ -1,8 +1,22 @@
 import SwiftUI
 
-// Shared Liquid Glass design primitives for Velura (iOS 26+).
-// Respects Reduce Transparency, Reduce Motion, and Light/Dark/Palette appearance modes.
+// Shared Liquid Glass primitives for Velura (iOS 26+).
+//
+// Rules this file encodes:
+// • Native `Glass` only. No hand-added strokes, shadows or opacity on a glass
+//   surface — the system owns edge treatment, specular highlights and the
+//   Reduce Transparency / Increase Contrast adaptation. Re-frosting glass by hand
+//   duplicates (and fights) what the material already does.
+// • `glassEffect` is applied last, after layout and appearance modifiers.
+// • Two glass surfaces near each other belong to one `GlassEffectContainer`
+//   (the container is what makes them sample and blend as one body).
+// • Glass is for the control layer. Content (metrics, lists, text) uses
+//   `veluraContentCard` — a plain vibrancy fill with no sampling cost.
 
+// MARK: - Backdrop
+
+/// The thing glass refracts. A flat single-colour background makes glass read as a
+/// tinted rectangle, so every screen keeps this living gradient underneath.
 struct VeluraAmbientBackdrop: View {
     @ObservedObject private var appearance = AppAppearance.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -24,16 +38,32 @@ struct VeluraAmbientBackdrop: View {
         isWarning ? SpeedometerStyle.warning.opacity(0.65) : SpeedometerStyle.mint
     }
 
+    private var isLightSurface: Bool {
+        appearance.appearanceMode == .light
+    }
+
     var body: some View {
         ZStack {
             SpeedometerStyle.background
+
+            // A soft diagonal wash keeps depth even when transparency is reduced,
+            // so floating chrome never sits on a dead flat field.
+            LinearGradient(
+                colors: [
+                    primaryGlow.opacity(isLightSurface ? 0.05 : 0.10),
+                    .clear,
+                    secondaryGlow.opacity(isLightSurface ? 0.04 : 0.07)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
             if !reduceTransparency {
                 GeometryReader { proxy in
                     let size = proxy.size
                     let maxDim = max(size.width, size.height)
-                    let primaryAlpha = (appearance.appearanceMode == .light ? 0.14 : 0.22) + clampedIntensity * 0.14
-                    let secondaryAlpha = (appearance.appearanceMode == .light ? 0.09 : 0.14) + (isActive ? 0.06 : 0)
+                    let primaryAlpha = (isLightSurface ? 0.14 : 0.22) + clampedIntensity * 0.14
+                    let secondaryAlpha = (isLightSurface ? 0.09 : 0.14) + (isActive ? 0.06 : 0)
 
                     ZStack {
                         RadialGradient(
@@ -100,54 +130,15 @@ struct VeluraAmbientBackdrop: View {
     }
 }
 
-struct VeluraGlassSurfaceModifier<S: Shape>: ViewModifier {
-    @ObservedObject private var appearance = AppAppearance.shared
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+// MARK: - Glass
 
+struct VeluraGlassSurfaceModifier<S: Shape>: ViewModifier {
     let shape: S
     let tint: Color?
     let interactive: Bool
-    let strokeColor: Color?
 
-    private var opaqueFallbackFill: Color {
-        switch appearance.appearanceMode {
-        case .light:
-            Color(red: 0.94, green: 0.95, blue: 0.97)
-        case .system:
-            Color(uiColor: .secondarySystemBackground)
-        case .palette, .dark:
-            SpeedometerStyle.background.opacity(0.96)
-        }
-    }
-
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if reduceTransparency {
-            content
-                .background(opaqueFallbackFill, in: shape)
-                .overlay {
-                    if let tint {
-                        shape.fill(tint.opacity(0.22))
-                            .allowsHitTesting(false)
-                    }
-                }
-                .overlay {
-                    shape.stroke(
-                        strokeColor ?? SpeedometerStyle.foreground.opacity(0.18),
-                        lineWidth: 1
-                    )
-                    .allowsHitTesting(false)
-                }
-        } else {
-            content
-                .glassEffect(resolvedGlass, in: shape)
-                .overlay {
-                    if let strokeColor {
-                        shape.stroke(strokeColor, lineWidth: 0.75)
-                            .allowsHitTesting(false)
-                    }
-                }
-        }
+        content.glassEffect(resolvedGlass, in: shape)
     }
 
     private var resolvedGlass: Glass {
@@ -162,65 +153,152 @@ struct VeluraGlassSurfaceModifier<S: Shape>: ViewModifier {
     }
 }
 
+// MARK: - Content surface (deliberately not glass)
+
+/// Fill for the content layer. Content does not sample: a scrolling card with a live
+/// glass region per row multiplies GPU cost per visible row and reads as chrome.
+struct VeluraContentSurfaceModifier<S: Shape>: ViewModifier {
+    @ObservedObject private var appearance = AppAppearance.shared
+    let shape: S
+    let emphasized: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .background { shape.fill(fill) }
+            .overlay {
+                shape.strokeBorder(
+                    SpeedometerStyle.foreground.opacity(appearance.appearanceMode == .light ? 0.08 : 0.06),
+                    lineWidth: 0.5
+                )
+            }
+    }
+
+    private var fill: Color {
+        switch appearance.appearanceMode {
+        case .light:
+            Color(red: 0.99, green: 0.99, blue: 1.0).opacity(emphasized ? 1 : 0.82)
+        case .system:
+            Color(uiColor: .secondarySystemBackground)
+        case .palette, .dark:
+            SpeedometerStyle.foreground.opacity(emphasized ? 0.11 : 0.065)
+        }
+    }
+}
+
 extension View {
+    /// Floating control surface — glass.
     func veluraGlassCard(
         cornerRadius: CGFloat = 24,
         tint: Color? = nil,
-        interactive: Bool = false,
-        stroke: Color? = nil
+        interactive: Bool = false
     ) -> some View {
         modifier(
             VeluraGlassSurfaceModifier(
                 shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous),
                 tint: tint,
-                interactive: interactive,
-                strokeColor: stroke
+                interactive: interactive
             )
         )
     }
 
+    /// Floating control surface — glass capsule.
     func veluraGlassCapsule(
         tint: Color? = nil,
-        interactive: Bool = false,
-        stroke: Color? = nil
+        interactive: Bool = false
     ) -> some View {
         modifier(
             VeluraGlassSurfaceModifier(
                 shape: Capsule(),
                 tint: tint,
-                interactive: interactive,
-                strokeColor: stroke
+                interactive: interactive
             )
         )
     }
 
+    /// Floating control surface — glass circle (icon buttons).
     func veluraGlassCircle(
         tint: Color? = nil,
-        interactive: Bool = false,
-        stroke: Color? = nil
+        interactive: Bool = false
     ) -> some View {
         modifier(
             VeluraGlassSurfaceModifier(
                 shape: Circle(),
                 tint: tint,
-                interactive: interactive,
-                strokeColor: stroke
+                interactive: interactive
+            )
+        )
+    }
+
+    /// Content-layer card. Same silhouette as the glass cards, no sampling.
+    func veluraContentCard(cornerRadius: CGFloat = 22, emphasized: Bool = false) -> some View {
+        modifier(
+            VeluraContentSurfaceModifier(
+                shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous),
+                emphasized: emphasized
+            )
+        )
+    }
+
+    /// Content-layer status capsule (GPS state, badges). Not glass — it does not float.
+    func veluraContentCapsule(emphasized: Bool = false) -> some View {
+        modifier(
+            VeluraContentSurfaceModifier(
+                shape: Capsule(),
+                emphasized: emphasized
             )
         )
     }
 }
 
+// MARK: - Press feedback
+
+/// Press feedback for custom-shaped controls. Kept separate from glass so the
+/// material stays untouched: only the label scales, the sampling surface does not.
 struct VeluraGlassPressButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var pressedScale: CGFloat = 0.975
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            // Scale only. A partial-opacity fade on a glass ancestor collapses the
+            // refraction, so pressed state never touches alpha.
             .scaleEffect(configuration.isPressed && !reduceMotion ? pressedScale : 1)
-            .opacity(configuration.isPressed ? 0.92 : 1)
+            .brightness(configuration.isPressed ? -0.02 : 0)
             .animation(
                 VeluraMotion.animation(VeluraMotion.press, reduceMotion: reduceMotion),
                 value: configuration.isPressed
             )
+    }
+}
+
+// MARK: - Grouping
+
+/// Wraps adjacent floating glass controls so they sample, blend and can morph as one
+/// body. Use around every cluster of two or more glass surfaces.
+struct VeluraGlassGroup<Content: View>: View {
+    var spacing: CGFloat = 12
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        GlassEffectContainer(spacing: spacing) {
+            content
+        }
+    }
+}
+
+// MARK: - Floating header
+
+/// Glass header for screens that hide the navigation bar (map cockpits, route review).
+/// Screens with a real navigation bar should use it instead — the system already
+/// provides glass there.
+struct VeluraFloatingHeader<Content: View>: View {
+    var cornerRadius: CGFloat = 26
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        HStack(spacing: 10) { content }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .veluraGlassCard(cornerRadius: cornerRadius)
     }
 }

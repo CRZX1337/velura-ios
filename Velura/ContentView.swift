@@ -143,29 +143,29 @@ struct ContentView: View {
 
     private var mainTabInterface: some View {
         TabView(selection: $selectedTab) {
-            speedometerScreen
-                .tabItem { Label("Speed", systemImage: "speedometer") }
-                .tag(MainTab.speedometer)
-
-            accelerationScreen
-                .tabItem { Label("Test", systemImage: "stopwatch") }
-                .tag(MainTab.acceleration)
-
-            NavigationStack {
-                DriveHistoryView()
+            Tab("Speed", systemImage: "speedometer", value: MainTab.speedometer) {
+                speedometerScreen
             }
-            .tabItem { Label("Drives", systemImage: "clock.arrow.circlepath") }
-            .tag(MainTab.history)
 
-            NavigationStack {
-                settingsScreen
+            Tab("Test", systemImage: "stopwatch", value: MainTab.acceleration) {
+                accelerationScreen
             }
-            .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
-            .tag(MainTab.settings)
+
+            Tab("Drives", systemImage: "clock.arrow.circlepath", value: MainTab.history) {
+                NavigationStack {
+                    DriveHistoryView()
+                }
+            }
+
+            Tab("Settings", systemImage: "slider.horizontal.3", value: MainTab.settings) {
+                NavigationStack {
+                    settingsScreen
+                }
+            }
         }
         .tint(SpeedometerStyle.accent)
-        .toolbar(.visible, for: .tabBar)
-        .tabBarMinimizeBehavior(.never)
+        .toolbarVisibility(.visible, for: .tabBar)
+        .tabBarMinimizeBehavior(.automatic)
         .animation(VeluraMotion.animation(VeluraMotion.tabChange, reduceMotion: reduceMotion), value: selectedTab)
         .preferredColorScheme(appearance.preferredColorScheme)
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -248,8 +248,7 @@ struct ContentView: View {
         .padding(.vertical, 11)
         .veluraGlassCard(
             cornerRadius: 18,
-            tint: SpeedometerStyle.warning.opacity(0.22),
-            stroke: SpeedometerStyle.warning.opacity(0.36)
+            tint: SpeedometerStyle.warning.opacity(0.22)
         )
         .accessibilityElement(children: .combine)
     }
@@ -287,7 +286,6 @@ struct ContentView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 18) {
-                        pageHeader(title: "Settings", subtitle: "Personalize your speedometer")
                         unitSetting
                         speedWarningSetting
                         keepScreenAwakeSetting
@@ -298,14 +296,17 @@ struct ContentView: View {
                         DashboardLayoutSettingsSection(layout: dashboardLayout)
                     }
                     .padding(.horizontal, geometry.size.width < 380 ? 16 : 22)
-                    .padding(.top, 14)
+                    .padding(.top, 8)
                     .padding(.bottom, 28)
                     .frame(maxWidth: 520)
                     .frame(maxWidth: .infinity)
                 }
             }
         }
-        .toolbar(.visible, for: .tabBar)
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbarVisibility(.visible, for: .tabBar)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .sensoryFeedback(.selection, trigger: appearance.theme)
         .sensoryFeedback(.selection, trigger: appearance.dialStyle)
         .sensoryFeedback(.selection, trigger: selectedRange)
@@ -329,7 +330,7 @@ struct ContentView: View {
         }
         .tint(SpeedometerStyle.accent)
         .padding(15)
-        .veluraGlassCard(cornerRadius: 21)
+        .veluraContentCard(cornerRadius: 21)
         .accessibilityLabel("Keep screen awake during active drives")
     }
 
@@ -373,7 +374,7 @@ struct ContentView: View {
                 .foregroundStyle(SpeedometerStyle.secondary)
         }
         .padding(15)
-        .veluraGlassCard(cornerRadius: 21)
+        .veluraContentCard(cornerRadius: 21)
     }
 
     private var appearanceSection: some View {
@@ -451,7 +452,7 @@ struct ContentView: View {
             }
         }
         .padding(15)
-        .veluraGlassCard(cornerRadius: 21)
+        .veluraContentCard(cornerRadius: 21)
     }
 
     private func themeOption(_ theme: AppearanceTheme) -> some View {
@@ -728,20 +729,6 @@ struct ContentView: View {
         .offset(y: 5)
     }
 
-    private func pageHeader(title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .modifier(AdaptiveFont(size: 24, weight: .semibold, design: .rounded))
-                .foregroundStyle(SpeedometerStyle.foreground)
-            Text(subtitle)
-                .modifier(AdaptiveFont(size: 12, weight: .medium, design: .rounded))
-                .foregroundStyle(SpeedometerStyle.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 5)
-        .padding(.bottom, 3)
-    }
-
     private var unitSetting: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
@@ -767,7 +754,7 @@ struct ContentView: View {
             .accessibilityLabel("Speed unit")
         }
         .padding(15)
-        .veluraGlassCard(cornerRadius: 21)
+        .veluraContentCard(cornerRadius: 21)
     }
 
     private var speedWarningSetting: some View {
@@ -824,7 +811,7 @@ struct ContentView: View {
             .foregroundStyle(SpeedometerStyle.secondary.opacity(0.8))
         }
         .padding(15)
-        .veluraGlassCard(cornerRadius: 21)
+        .veluraContentCard(cornerRadius: 21)
     }
 
     private var thresholdValue: some View {
@@ -853,7 +840,7 @@ struct ContentView: View {
         }
         .tint(SpeedometerStyle.accent)
         .padding(15)
-        .veluraGlassCard(cornerRadius: 21)
+        .veluraContentCard(cornerRadius: 21)
         .accessibilityLabel("Show GPS signal status")
     }
 
@@ -948,7 +935,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 13)
-        .veluraGlassCard(cornerRadius: 21)
+        .veluraContentCard(cornerRadius: 21)
         .animation(VeluraMotion.animation(VeluraMotion.selection, reduceMotion: reduceMotion), value: selectedRange)
     }
 
@@ -1261,7 +1248,7 @@ struct SpeedometerGauge: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .veluraGlassCard(cornerRadius: 26, tint: isOverspeed ? SpeedometerStyle.warning.opacity(0.14) : nil, stroke: gaugeColor.opacity(0.28))
+        .veluraGlassCard(cornerRadius: 26, tint: isOverspeed ? SpeedometerStyle.warning.opacity(0.14) : nil)
         .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: speed)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
@@ -1310,7 +1297,7 @@ struct SpeedometerGauge: View {
         }
         .padding(22)
         .frame(maxWidth: .infinity)
-        .veluraGlassCard(cornerRadius: 26, tint: isOverspeed ? SpeedometerStyle.warning.opacity(0.14) : nil, stroke: gaugeColor.opacity(0.28))
+        .veluraGlassCard(cornerRadius: 26, tint: isOverspeed ? SpeedometerStyle.warning.opacity(0.14) : nil)
         .animation(VeluraMotion.animation(VeluraMotion.gauge, reduceMotion: reduceMotion), value: progress)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: speed)
         .animation(VeluraMotion.animation(VeluraMotion.stateChange, reduceMotion: reduceMotion), value: isOverspeed)
