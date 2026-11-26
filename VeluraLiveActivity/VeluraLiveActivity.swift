@@ -165,8 +165,11 @@ private func gpsStatusColor(
 
 private func durationText(for state: VeluraDriveActivityAttributes.ContentState) -> Text {
     if state.isRunning && !state.isEnded {
+        // Text(_:style:.timer) statt Text(timerInterval:) – der Intervall-Text wird
+        // in Live Activities vom System als eigene Schicht gerendert und dabei aus
+        // dem VStack gerissen, sodass die Dauer neben der Einheit landete.
         let anchor = state.updatedAt.addingTimeInterval(-max(0, state.elapsedSeconds))
-        return Text(timerInterval: anchor...Date.distantFuture, countsDown: false, showsHours: true)
+        return Text(anchor, style: .timer)
     }
     return Text(formattedDuration(state.elapsedSeconds))
 }
@@ -225,7 +228,7 @@ private struct LockScreenDriveActivityView: View {
         VStack(alignment: .leading, spacing: 8) {
             header
 
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
                 Text("\(speed)")
                     .font(.system(size: 40 * displayScale, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -236,10 +239,11 @@ private struct LockScreenDriveActivityView: View {
                 Text(speedUnit)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
+                    .padding(.top, 8)
 
                 Spacer(minLength: 8)
 
-                VStack(alignment: .trailing, spacing: 0) {
+                VStack(alignment: .trailing, spacing: 1) {
                     Text("Duration")
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(.secondary)
@@ -248,7 +252,9 @@ private struct LockScreenDriveActivityView: View {
                         .monospacedDigit()
                         .foregroundStyle(Color.primary)
                         .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
+                .frame(width: 86, alignment: .trailing)
             }
 
             ProgressView(value: progress)
