@@ -61,32 +61,67 @@ jobs:
           xcrun simctl ui "$UDID" appearance dark || true
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
 
-      - name: Capture screenshots
+      - name: Build for testing
         shell: bash
         run: |
-          set -o pipefail
-          mkdir -p build
-          xcodebuild test \
+          set -eo pipefail
+          mkdir -p build/shots
+          # No signing overrides: the simulator build signs ad hoc, and an unsigned
+          # UI-test runner is exactly what iOS refuses to launch (FBSOpenApplication
+          # "RequestDenied").
+          xcodebuild build-for-testing \
+            -project Velura.xcodeproj \
+            -scheme Velura \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build/DerivedData \
+            2>&1 | tee build/xcodebuild-build.log | tail -30
+          APP_PATH="$(find build/DerivedData/Build/Products -maxdepth 2 -name 'Velura.app' -type d | head -1)"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          test -n "$APP_PATH"
+
+      - name: Capture launch screen without the test runner
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
+          if [ -n "${APP_PATH:-}" ] && [ -d "$APP_PATH" ]; then
+            xcrun simctl install "$UDID" "$APP_PATH" || true
+            xcrun simctl launch "$UDID" com.velura.app || true
+            sleep 10
+            xcrun simctl io "$UDID" screenshot build/shots/00-launch.png || true
+            xcrun simctl terminate "$UDID" com.velura.app || true
+          fi
+          ls -la build/shots
+
+      - name: Capture the guided tour (XCUITest)
+        if: always()
+        shell: bash
+        run: |
+          set -eo pipefail
+          xcodebuild test-without-building \
             -project Velura.xcodeproj \
             -scheme Velura \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
             -only-testing:VeluraUITests/VeluraScreenShots \
             -derivedDataPath build/DerivedData \
             -resultBundlePath build/shots.xcresult \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee build/xcodebuild-test.log | tail -40
-          ls -la build
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 240 \
+            2>&1 | tee build/xcodebuild-test.log | tail -40
 
       - name: Surface compiler diagnostics
         if: always()
         shell: bash
         run: |
           set -uo pipefail
-          if [ -f build/xcodebuild-test.log ]; then
-            echo "--- diagnostics ---"
-            grep -E "^[^ ]*: (error|warning): " build/xcodebuild-test.log | sort -u | head -60 || true
-            echo "--- result ---"
-            grep -E "\*\* (TEST|BUILD)" build/xcodebuild-test.log | tail -5 || true
-          fi
+          for log in build/xcodebuild-build.log build/xcodebuild-test.log; do
+            [ -f "$log" ] || continue
+            echo "--- $log ---"
+            grep -E "^[^ ]*: (error|warning): " "$log" | sort -u | head -40 || true
+            grep -E "\*\* (TEST|BUILD)" "$log" | tail -5 || true
+          done
 
       - name: Export attachments
         if: always()
@@ -127,7 +162,9 @@ jobs:
         if: always()
         with:
           name: velura-xcodebuild-log-${{ github.run_number }}
-          path: build/xcodebuild-test.log
+          path: |
+            build/xcodebuild-build.log
+            build/xcodebuild-test.log
           if-no-files-found: warn
           retention-days: 7
 
